@@ -27,6 +27,9 @@ class ScriptLine(BaseModel):
     emotion: str = "neutral"
     sfx: list[SfxCue] = Field(default_factory=list)
     ambience: str | None = None
+    # For engines that act (ElevenLabs v3): the same words with performance tags, e.g.
+    # "[sighs] I know. [wry] I'm just setting low expectations." Cleared when the text changes.
+    performance: str | None = None
 
 
 class Character(BaseModel):
@@ -50,6 +53,8 @@ class Cast(BaseModel):
     narrator_voice: str | None = None  # Kokoro voice (always kept as the free fallback)
     narrator_engine: Literal["kokoro", "elevenlabs"] = "kokoro"
     narrator_engine_voice: str | None = None
+    # ElevenLabs v3 delivery: creative = most expressive, natural = balanced, robust = steadiest.
+    eleven_style: Literal["creative", "natural", "robust"] = "natural"
     unknown_voice: str | None = None  # for lines the director couldn't attribute
     characters: list[Character] = Field(default_factory=list)
 

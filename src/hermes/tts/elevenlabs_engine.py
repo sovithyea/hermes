@@ -30,6 +30,10 @@ EMOTION_TAGS = {
 }
 
 
+# v3 accepts three stability presets; lower = more expressive and varied.
+STYLE_STABILITY = {"creative": 0.0, "natural": 0.5, "robust": 1.0}
+
+
 class ElevenLabsError(RuntimeError):
     pass
 
@@ -72,12 +76,17 @@ class ElevenLabsEngine:
 
     def tagged(self, text: str, emotion: str) -> str:
         if not self.model.startswith("eleven_v3"):
-            return text  # older models would read the tag aloud
+            return re.sub(r"\[[a-z ]+\]\s*", "", text)  # older models would read tags aloud
+        if text.lstrip().startswith("["):
+            return text  # already directed line by line (see perform.py)
         tag = EMOTION_TAGS.get(emotion)
         return f"{tag} {text}" if tag else text
 
-    def synth(self, text: str, voice: str, speed: float = 1.0, emotion: str = "neutral") -> np.ndarray:
+    def synth(self, text: str, voice: str, speed: float = 1.0, emotion: str = "neutral",
+              style: str = "natural") -> np.ndarray:
         body = {"text": self.tagged(text, emotion), "model_id": self.model}
+        if style != "natural" and self.model.startswith("eleven_v3"):
+            body["voice_settings"] = {"stability": STYLE_STABILITY[style]}
         for attempt in range(3):
             resp = self.client.post(f"/v1/text-to-speech/{voice}", params={"output_format": f"pcm_{SAMPLE_RATE}"},
                                     json=body)

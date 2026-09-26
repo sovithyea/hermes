@@ -67,6 +67,23 @@ def engines() -> dict:
     return out
 
 
+def _direct_performances(proj: BookProject, renderer: Renderer, chapter: int, progress: Progress | None) -> None:
+    """Give lines voiced by an acting engine (ElevenLabs) performance markup, once. Free: runs locally."""
+    from .perform import perform_lines
+
+    lines = proj.load_script(chapter)
+    todo = [l for l in lines if l.performance is None
+            and getattr(renderer.engine_and_voice(l)[0], "native_emotion", False)]
+    if not todo:
+        return
+    if progress:
+        progress(0, 1, f"Directing the performance for chapter {chapter}")
+    performed = perform_lines(todo, lines, proj.load_cast().pov_character)
+    for l in todo:
+        l.performance = performed.get(l.id, l.text)  # plain text if the director's version was rejected
+    proj.save_script(chapter, lines)
+
+
 class _StandIn:
     """Same name/abilities as a real engine, without loading it — for fingerprints and estimates."""
 
@@ -274,6 +291,8 @@ def render(proj: BookProject, chapters: list[int], progress: Progress | None = N
     cast = auto_cast(proj.load_cast(), proj.all_scripts())  # fills in voices for any new speakers
     proj.save_cast(cast)
     renderer = Renderer(engines(), cast, Lexicon.load(proj.lexicon_path), proj.cache_dir)
+    for n in chapters:
+        _direct_performances(proj, renderer, n, progress)
     for i, n in enumerate(chapters):
         def step(done: int, total: int, n=n, i=i) -> None:
             if progress:

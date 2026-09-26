@@ -95,8 +95,11 @@ class Renderer:
         emotion = line.emotion if native else None
         prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" and not native else Prosody()
         effect = self.effect_for(line)
-        text = self.lexicon.apply(line.text)
-        return engine, voice, text, prosody, emotion, effect, cache_key(engine.name, voice, text, prosody, effect, emotion)
+        text = self.lexicon.apply((line.performance or line.text) if native else line.text)
+        style = self.cast.eleven_style if native else "natural"
+        # The style only joins the cache key when it isn't the default, so older audio stays valid.
+        key_emotion = emotion if style == "natural" else f"{emotion}|{style}"
+        return engine, voice, text, prosody, emotion, effect, cache_key(engine.name, voice, text, prosody, effect, key_emotion)
 
     def fingerprint(self, title: str, lines: list[ScriptLine]) -> str:
         """Identifies exactly what a chapter would sound like; changes iff its audio would change."""
@@ -114,7 +117,7 @@ class Renderer:
             audio, _ = sf.read(path, dtype="float32")
             return audio
         if emotion is not None:
-            audio = engine.synth(text, voice, 1.0, emotion=emotion)
+            audio = engine.synth(text, voice, 1.0, emotion=emotion, style=self.cast.eleven_style)
         else:
             audio = engine.synth(text, voice, prosody.speed)
         if prosody.gain_db:

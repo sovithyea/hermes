@@ -388,9 +388,12 @@ async def edit_line(request: Request, slug: str, n: int, line_id: str):
     line = next((l for l in lines if l.id == line_id), None)
     if not line:
         raise HTTPException(404)
+    old_text = line.text
     for field in ("speaker", "type", "emotion", "text"):
         if field in form:
             setattr(line, field, str(form[field]).strip())
+    if line.text != old_text:
+        line.performance = None  # re-direct the performance for the new wording
     if line.type == "narration":
         line.speaker = NARRATOR
     elif line.speaker == NARRATOR:
