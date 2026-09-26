@@ -8,7 +8,7 @@
         {% if j.status == "queued" %}Waiting its turn{% elif j.status == "running" %}{{ j.message }} · {{ j.percent }}%{% elif j.status == "done" %}Done{% else %}Failed{% endif %}
       </span>
     </div>
-    {% if j.status in ["queued", "running"] %}<div class="bar"><span style="width: {{ j.percent }}%"></span></div>{% endif %}
+    {% if j.status in ["queued", "running"] %}<div class="bar"><span style="transform: scaleX({{ j.percent / 100 }})"></span></div>{% endif %}
     {% if j.error %}<p class="error">{{ j.error }}</p>{% endif %}
   </div>
   {% endfor %}
