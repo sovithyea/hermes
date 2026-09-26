@@ -150,7 +150,7 @@ def scan_page(request: Request, slug: str):
     if phone_url:
         import segno
 
-        qr = segno.make(f"{phone_url}/book/{slug}/scan", error="m").svg_inline(scale=5, dark="#2a2520", light="#fffdf9")
+        qr = segno.make(f"{phone_url}/book/{slug}/scan", error="m").svg_inline(scale=5, omitsize=True, dark="#1b1815", light="#ffffff")
     pages = pipeline.scanned_pages(proj)
     return templates.TemplateResponse(request, "scan.html", {
         "slug": slug, "title": book_title(proj), "pages": pages[-8:][::-1], "count": len(pages),
