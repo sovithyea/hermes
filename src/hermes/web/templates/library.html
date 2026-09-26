@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="hero">
+  <h1>Your audiobooks</h1>
+  <p class="muted">Add a book, let Hermes work out who says what, then listen with a full cast of voices.</p>
+</section>
+
+<form class="upload" action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
+  <label class="dropzone" for="file">
+    <strong>Add a book</strong>
+    <span class="muted">EPUB works best · PDF and TXT are OK</span>
+    <input id="file" name="file" type="file" accept=".epub,.pdf,.txt" required
+           onchange="this.form.classList.add('busy'); this.form.submit()">
+  </label>
+  <p class="busy-note">Reading the book…</p>
+</form>
+
+{% if books %}
+<ul class="shelf">
+  {% for b in books %}
+  <li>
+    <a class="book-card" href="/book/{{ b.slug }}">
+      <span class="spine" style="--hue: {{ (b.slug|length * 37) % 360 }}"></span>
+      <span class="book-meta">
+        <span class="book-title">{{ b.title }}</span>
+        <span class="muted">{{ b.done }} of {{ b.chapters }} chapters ready to play</span>
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

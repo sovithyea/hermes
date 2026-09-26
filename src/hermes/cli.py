@@ -12,7 +12,6 @@ from rich.progress import Progress
 from rich.table import Table
 
 from . import director
-from .ingest import load_book
 from .store import BookProject
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -27,9 +26,10 @@ def _main(verbose: bool = typer.Option(False, "-v", "--verbose")) -> None:
 @app.command()
 def ingest(path: Path) -> None:
     """Import a book (EPUB/PDF/TXT) into the library."""
-    chapters = load_book(path)
-    proj = BookProject.create(path)
-    proj.save_chapters(chapters)
+    from . import pipeline
+
+    proj = pipeline.ingest(path)
+    chapters = proj.load_chapters()
     table = Table("#", "Title", "Words")
     for c in chapters:
         table.add_row(str(c.index), c.title[:60], f"{c.word_count:,}")
@@ -44,21 +44,15 @@ def direct(
     model: str = typer.Option(director.DEFAULT_MODEL, help="Ollama model"),
     think: bool = typer.Option(False, help="Let the model reason first (slower, more accurate)"),
 ) -> None:
-    """Run the director (speaker + emotion labelling) on chapters."""
+    """Run the director (speaker + emotion labelling) on chapters, then assign voices."""
+    from . import pipeline
+
     proj = BookProject(slug)
-    chapters = {c.index: c for c in proj.load_chapters()}
-    cast = proj.load_cast()
     with Progress(console=console) as progress:
-        for n in chapter:
-            task = progress.add_task(f"Chapter {n}", total=None)
-            lines = director.direct_chapter(
-                chapters[n], cast, model,
-                on_progress=lambda done, total: progress.update(task, completed=done, total=total),
-                think=think,
-            )
-            proj.save_script(n, lines)
-            proj.save_cast(cast)
-    console.print(f"[green]Done.[/] Cast now has {len(cast.characters)} characters.")
+        task = progress.add_task("Reading", total=None)
+        pipeline.direct(proj, chapter, lambda done, total, msg: progress.update(
+            task, completed=done, total=total, description=msg), model=model, think=think)
+    console.print(f"[green]Done.[/] Cast now has {len(proj.load_cast().characters)} characters.")
 
 
 @app.command("cast")
@@ -86,26 +80,27 @@ def render(slug: str, chapter: list[int] = typer.Option(..., "--chapter", "-c"))
     """Generate the MP3 for chapters (only changed lines are re-synthesised)."""
     import time
 
-    from .lexicon import Lexicon
-    from .render import Renderer, export_mp3
-    from .tts.kokoro_engine import KokoroEngine
+    from . import pipeline
 
     proj = BookProject(slug)
-    titles = {c.index: c.title for c in proj.load_chapters()}
-    renderer = Renderer(KokoroEngine(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
     start = time.time()
     with Progress(console=console) as progress:
-        for n in chapter:
-            task = progress.add_task(f"Chapter {n}", total=None)
-            audio = renderer.chapter_audio(
-                titles[n], proj.load_script(n),
-                on_progress=lambda done, total: progress.update(task, completed=done, total=total),
-            )
-            out = export_mp3(audio, proj.audio_path(n), title=titles[n], album=slug, track=n)
-            console.print(f"  → {out}")
-    s = renderer.stats
-    console.print(f"[green]Rendered {s.seconds / 60:.1f} min of audio in {time.time() - start:.0f}s[/] "
-                  f"({s.cache_hits}/{s.lines} lines from cache)")
+        task = progress.add_task("Voicing", total=None)
+        stats = pipeline.render(proj, chapter, lambda done, total, msg: progress.update(
+            task, completed=done, total=total, description=msg))
+    for n in chapter:
+        console.print(f"  → {proj.audio_path(n)}")
+    console.print(f"[green]Rendered {stats.seconds / 60:.1f} min of audio in {time.time() - start:.0f}s[/] "
+                  f"({stats.cache_hits}/{stats.lines} lines from cache)")
+
+
+@app.command()
+def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Start the web app (open http://localhost:8000)."""
+    import uvicorn
+
+    console.print(f"[green]Hermes is running →[/] http://{'localhost' if host == '127.0.0.1' else host}:{port}")
+    uvicorn.run("hermes.web.app:app", host=host, port=port, log_level="warning")
 
 
 @app.command()

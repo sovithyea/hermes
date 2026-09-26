@@ -55,19 +55,32 @@ class Renderer:
         return (c.voice if c and c.voice else None) or self.cast.unknown_voice
 
     def effect_for(self, line: ScriptLine) -> str | None:
+        if line.type == "narration":
+            return None
+        c = self.cast.find(line.speaker)
+        if c and c.kind == "dragon":
+            return "dragon"  # however the director typed it, a dragon should sound like one
         if line.type == "mindspeech":
-            c = self.cast.find(line.speaker)
-            return "dragon" if c and c.kind == "dragon" else "mind"
+            return "mind"
         if line.type == "thought":
             return "thought"
         return None
 
-    def line_audio(self, line: ScriptLine) -> np.ndarray:
+    def _plan(self, line: ScriptLine) -> tuple[str, str, Prosody, str | None, str]:
         voice = self.voice_for(line)
         prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" else Prosody()
         effect = self.effect_for(line)
         text = self.lexicon.apply(line.text)
-        key = cache_key(self.engine.name, voice, text, prosody, effect)
+        return voice, text, prosody, effect, cache_key(self.engine.name, voice, text, prosody, effect)
+
+    def fingerprint(self, title: str, lines: list[ScriptLine]) -> str:
+        """Identifies exactly what a chapter would sound like; changes iff its audio would change."""
+        keys = [self._plan(_title_line(title, lines))[-1] if title else ""]
+        keys += [f"{self._plan(l)[-1]}@{l.paragraph}" for l in lines]
+        return hashlib.sha256("|".join(keys).encode()).hexdigest()[:24]
+
+    def line_audio(self, line: ScriptLine) -> np.ndarray:
+        voice, text, prosody, effect, key = self._plan(line)
         path = self.cache_dir / f"{key}.wav"
         self.stats.lines += 1
         if path.exists():
@@ -114,7 +127,54 @@ def silence(seconds: float) -> np.ndarray:
 def _title_line(title: str, lines: list[ScriptLine]) -> ScriptLine:
     chapter = lines[0].chapter if lines else 0
     return ScriptLine(id=f"ch{chapter:03d}-title", chapter=chapter, paragraph=-1,
-                      type="narration", speaker=NARRATOR, text=title.rstrip(".") + ".")
+                      type="narration", speaker=NARRATOR, text=speakable_title(title))
+
+
+ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
+ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+
+
+def speakable_title(title: str) -> str:
+    """'CHAPTER XIV.' -> 'Chapter Fourteen.'  TTS engines misread roman numerals and shouty caps."""
+    words: list[str] = []
+    for raw in title.replace("—", " — ").split():
+        w = raw.strip(".,:;")
+        tail = raw[len(raw.rstrip(".,:;")):]
+        after_chapter = bool(words) and words[-1].lower() in ("chapter", "part", "book")
+        if w.isdigit():
+            w = _num_words(int(w))
+        elif _is_roman(w) and (after_chapter or len(w) > 1):  # a lone "I" is usually the pronoun
+            w = _num_words(_roman(w))
+        elif w.isupper() and len(w) > 1:
+            w = w.capitalize()
+        if w:
+            words.append(w + tail)
+    return " ".join(words).rstrip(".,:; ") + "."
+
+
+def _is_roman(w: str) -> bool:
+    return bool(w) and w.isupper() and set(w) <= ROMAN.keys()
+
+
+def _roman(s: str) -> int:
+    total = 0
+    for a, b in zip(s, s[1:] + " "):
+        v = ROMAN[a]
+        total += -v if b != " " and ROMAN[b] > v else v
+    return total
+
+
+def _num_words(n: int) -> str:
+    if n < 20:
+        w = ONES[n]
+    elif n < 100:
+        w = TENS[n // 10] + ("-" + ONES[n % 10] if n % 10 else "")
+    else:
+        rest = n % 100
+        w = ONES[n // 100] + " hundred" + (" and " + _num_words(rest).lower() if rest else "")
+    return w.capitalize()
 
 
 def apply_ffmpeg_filter(audio: np.ndarray, af: str) -> np.ndarray:

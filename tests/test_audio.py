@@ -67,3 +67,23 @@ def test_renderer_caches_lines_and_inserts_pauses(tmp_path):
     calls = FakeEngine.calls
     r.chapter_audio("", lines)
     assert FakeEngine.calls == calls and r.stats.cache_hits == 3
+
+
+def test_speakable_title():
+    from hermes.render import speakable_title
+    assert speakable_title("CHAPTER II.") == "Chapter Two."
+    assert speakable_title("Chapter I.") == "Chapter One."
+    assert speakable_title("CHAPTER XIV") == "Chapter Fourteen."
+    assert speakable_title("Chapter 42: The Gauntlet") == "Chapter Forty-two: The Gauntlet."
+    assert speakable_title("Chapter One") == "Chapter One."
+    assert speakable_title("Epilogue") == "Epilogue."
+
+
+def test_dragon_lines_get_dragon_effect_even_if_typed_as_thought(tmp_path):
+    cast = Cast(narrator_voice="n", characters=[Character(name="Skarth", kind="dragon", voice="d"),
+                                                Character(name="Maren", voice="m")])
+    r = Renderer(FakeEngine(), cast, Lexicon(), tmp_path)
+    assert r.effect_for(line(1, "Skarth", type="thought")) == "dragon"
+    assert r.effect_for(line(2, "Maren", type="mindspeech")) == "mind"
+    assert r.effect_for(line(3, "Maren", type="thought")) == "thought"
+    assert r.effect_for(line(4, "Narrator", type="narration")) is None

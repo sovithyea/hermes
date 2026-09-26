@@ -111,10 +111,28 @@ def direct_chapter(
     lines: list[ScriptLine] = []
     for n, chunk in enumerate(chunks, start=1):
         labels = _label_chunk(chunk, cast, lines[-CONTEXT_LINES:], model, think)
+        _continue_split_lines(chunk, labels)
         lines.extend(_to_lines(chapter.index, chunk, labels, cast))
         if on_progress:
             on_progress(n, len(chunks))
     return lines
+
+
+SPLIT_TAG_MAX_WORDS = 12
+
+
+def _continue_split_lines(chunk: list[Segment], labels: dict[int, Label]) -> None:
+    """'“Hello,” she said. “Come in.”' — the second half has the first half's speaker.
+
+    Applies when two spoken segments of the same kind sit in one paragraph separated only by
+    a short tag. Models often get the first half (next to the tag) right and guess the second.
+    """
+    for a, tag, b in zip(chunk, chunk[1:], chunk[2:]):
+        if not (a.paragraph == tag.paragraph == b.paragraph and a.kind == b.kind != "narr" and tag.kind == "narr"):
+            continue
+        first, second = labels.get(a.id), labels.get(b.id)
+        if first and first.type != "narration" and len(tag.text.split()) <= SPLIT_TAG_MAX_WORDS:
+            labels[b.id] = Label(b.id, first.type, first.speaker, second.emotion if second else first.emotion)
 
 
 def _chunk(segments: list[Segment]):

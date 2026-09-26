@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Cast · {{ title }}{% endblock %}
+{% block nav %}<a href="/">Library</a><a href="/book/{{ slug }}">{{ title }}</a>{% endblock %}
+{% macro voice_select(name, current, allow_auto=False) -%}
+<select name="{{ name }}" class="voice-select">
+  {% if allow_auto %}<option value="">Automatic</option>{% endif %}
+  {% for v in VOICES %}<option value="{{ v }}" {% if v == current %}selected{% endif %}>{{ voice_label(v) }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+{% block body %}
+<section class="hero">
+  <h1>Cast &amp; voices</h1>
+  <p class="muted">Every character gets a voice from their gender and how much they talk; the biggest parts get the best voices.
+    Change any of them here. ▶ plays a sample.</p>
+</section>
+{% if saved %}<p class="notice">Saved. Chapters that sound different now are marked “Changed · re-voice”.</p>{% endif %}
+
+<form method="post" class="cast-form">
+  <div class="card">
+    <h2>Narrator</h2>
+    <div class="cast-row">
+      <div class="who"><strong>Narrator</strong><span class="muted">Reads everything that isn't dialogue</span></div>
+      <div class="voice-pick">{{ voice_select("narrator_voice", cast.narrator_voice) }}<button type="button" class="btn small preview" data-name="">▶</button></div>
+    </div>
+    {% if cast.pov_character %}
+    <label class="check">
+      <input type="checkbox" name="split_pov_voice" {% if cast.split_pov_voice %}checked{% endif %}>
+      Give <strong>{{ cast.pov_character }}</strong> a separate voice for their dialogue
+      <span class="muted">(off = the narrator voice speaks their lines too, like a real first-person audiobook)</span>
+    </label>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Characters</h2>
+    {% for c in speaking %}
+    <div class="cast-row">
+      <div class="who">
+        <strong>{{ c.name }}</strong>
+        <span class="muted">{{ c.line_count }} line{{ "s" if c.line_count != 1 }}{% if c.aliases %} · aka {{ c.aliases|join(", ") }}{% endif %}</span>
+        {% if c.description %}<span class="muted small">{{ c.description }}</span>{% endif %}
+      </div>
+      <div class="traits">
+        <select name="gender::{{ c.name }}">{% for g in ["female", "male", "unknown"] %}<option {% if g == c.gender %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+        <select name="kind::{{ c.name }}">{% for k in ["human", "dragon", "other"] %}<option {% if k == c.kind %}selected{% endif %}>{{ k }}</option>{% endfor %}</select>
+      </div>
+      <div class="voice-pick">
+        {% if c.name == cast.pov_character and not cast.split_pov_voice %}
+          <input type="hidden" name="voice::{{ c.name }}" value="{{ c.voice or '' }}">
+          <span class="muted">Uses the narrator voice</span>
+        {% else %}
+          {{ voice_select("voice::" ~ c.name, c.voice, allow_auto=True) }}
+          <button type="button" class="btn small preview" data-name="{{ c.name.split()[0] }}">▶</button>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <p class="muted">No characters yet. Read a chapter first.</p>
+    {% endfor %}
+    <div class="cast-row">
+      <div class="who"><strong>Unidentified speakers</strong><span class="muted">Lines the AI couldn't pin on anyone</span></div>
+      <div class="voice-pick">{{ voice_select("unknown_voice", cast.unknown_voice) }}<button type="button" class="btn small preview" data-name="">▶</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Pronunciations</h2>
+    <p class="muted">One per line: <code>Name = how to say it</code>. For example <code>Xaden = Zayden</code>.</p>
+    <textarea name="lexicon" rows="6" spellcheck="false">{{ lexicon_text }}</textarea>
+  </div>
+
+  <div class="save-bar"><button class="btn primary" type="submit">Save cast</button></div>
+</form>
+{% endblock %}

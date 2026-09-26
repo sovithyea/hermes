@@ -82,6 +82,13 @@ class BookProject:
     def audio_path(self, chapter: int) -> Path:
         return self.dir / "audio" / f"ch{chapter:03d}.mp3"
 
+    def save_render_info(self, chapter: int, info: dict) -> None:
+        _write_json(self.audio_path(chapter).with_suffix(".json"), info)
+
+    def load_render_info(self, chapter: int) -> dict | None:
+        path = self.audio_path(chapter).with_suffix(".json")
+        return _read_json(path) if path.exists() else None
+
 
 def _write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

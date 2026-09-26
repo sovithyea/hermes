@@ -1,0 +1,50 @@
+{% set running = jobs|selectattr("status", "in", ["queued", "running"])|list %}
+<div id="progress" {% if running %}hx-get="/book/{{ slug }}/progress" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% for j in jobs %}
+  <div class="job job-{{ j.status }}">
+    <div class="job-head">
+      <strong>{{ j.label }}</strong>
+      <span class="muted">
+        {% if j.status == "queued" %}Waiting its turn{% elif j.status == "running" %}{{ j.message }} · {{ j.percent }}%{% elif j.status == "done" %}Done{% else %}Failed{% endif %}
+      </span>
+    </div>
+    {% if j.status in ["queued", "running"] %}<div class="bar"><span style="width: {{ j.percent }}%"></span></div>{% endif %}
+    {% if j.error %}<p class="error">{{ j.error }}</p>{% endif %}
+  </div>
+  {% endfor %}
+
+  <table class="chapters">
+    <thead><tr><th>#</th><th>Chapter</th><th class="num">Words</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="muted">{{ r.index }}</td>
+        <td>
+          {% if r.status != "new" %}<a href="/book/{{ slug }}/chapter/{{ r.index }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}
+        </td>
+        <td class="num muted">{{ "{:,}".format(r.words) }}</td>
+        <td>
+          {% if r.busy == "direct" %}<span class="pill working">Reading…</span>
+          {% elif r.busy == "render" %}<span class="pill working">Voicing…</span>
+          {% elif r.status == "new" %}<span class="pill">Not read yet</span>
+          {% elif r.status == "read" %}<span class="pill">Ready to voice</span>
+          {% elif r.status == "stale" %}<span class="pill warn" title="The script, cast or pronunciations changed since this was voiced">Changed · re-voice</span>
+          {% else %}<span class="pill ok">Ready to play</span>{% endif %}
+        </td>
+        <td class="actions">
+          {% if not r.busy %}
+            {% if r.status == "new" %}
+              <button class="btn small" hx-post="/book/{{ slug }}/jobs" hx-vals='{"kind":"direct","chapters":"{{ r.index }}"}' hx-target="#progress" hx-swap="outerHTML">Read</button>
+            {% elif r.status in ["read", "stale"] %}
+              <button class="btn small" hx-post="/book/{{ slug }}/jobs" hx-vals='{"kind":"render","chapters":"{{ r.index }}"}' hx-target="#progress" hx-swap="outerHTML">Voice</button>
+            {% endif %}
+            {% if r.version %}
+              <button class="btn small play" data-play="{{ r.index }}" data-title="{{ r.title }}" data-version="{{ r.version }}">▶ Play</button>
+            {% endif %}
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

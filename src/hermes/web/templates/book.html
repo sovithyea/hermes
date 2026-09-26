@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Hermes{% endblock %}
+{% block nav %}<a href="/">Library</a><a href="/book/{{ slug }}/cast">Cast &amp; voices</a>{% endblock %}
+{% block body %}
+<section class="hero">
+  <h1>{{ title }}</h1>
+  <p class="muted">
+    {% if cast.pov_character %}Told by <strong>{{ cast.pov_character }}</strong> · {% endif %}
+    {{ cast.characters|selectattr("line_count")|list|length }} speaking characters
+  </p>
+</section>
+
+<div class="steps">
+  <div class="step">
+    <span class="step-n">1</span>
+    <div><strong>Read</strong><p class="muted">The AI works out who says each line (≈45 s per 1,000 words).</p></div>
+    <button class="btn" hx-post="/book/{{ slug }}/jobs" hx-vals='{"kind":"direct","chapters":"all"}'
+            hx-target="#progress" hx-swap="outerHTML">Read all chapters</button>
+  </div>
+  <div class="step">
+    <span class="step-n">2</span>
+    <div><strong>Check</strong><p class="muted">Pick voices in <a href="/book/{{ slug }}/cast">Cast</a>; fix any wrong speakers by opening a chapter.</p></div>
+  </div>
+  <div class="step">
+    <span class="step-n">3</span>
+    <div><strong>Voice</strong><p class="muted">Generate the audio. Only lines you changed are redone.</p></div>
+    <button class="btn primary" hx-post="/book/{{ slug }}/jobs" hx-vals='{"kind":"render","chapters":"all"}'
+            hx-target="#progress" hx-swap="outerHTML">Voice all chapters</button>
+  </div>
+</div>
+
+{% include "_progress.html" %}
+
+<div class="player" id="player" data-slug="{{ slug }}" hidden>
+  <div class="player-info"><span class="muted">Now playing</span> <strong id="player-title"></strong></div>
+  <audio id="audio" controls preload="metadata"></audio>
+  <div class="player-controls">
+    <button class="btn small" data-skip="-15">−15 s</button>
+    <button class="btn small" data-skip="30">+30 s</button>
+    <label class="muted">Speed
+      <select id="speed">{% for s in [0.8, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0] %}<option value="{{ s }}" {% if s == 1.0 %}selected{% endif %}>{{ s }}×</option>{% endfor %}</select>
+    </label>
+  </div>
+</div>
+{% endblock %}

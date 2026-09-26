@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ chapter.title }} · {{ title }}{% endblock %}
+{% block nav %}<a href="/">Library</a><a href="/book/{{ slug }}">{{ title }}</a><a href="/book/{{ slug }}/cast">Cast</a>{% endblock %}
+{% block body %}
+<section class="hero">
+  <h1>{{ chapter.title }}</h1>
+  <p class="muted">Check who says each line. Changes save instantly; press ▶ to hear a line.
+    Then go back and press <em>Voice</em> for this chapter.</p>
+</section>
+
+<div class="script-tools">
+  <label>Show
+    <select id="filter">
+      <option value="spoken">Dialogue &amp; thoughts only</option>
+      <option value="all">Everything</option>
+      {% for s in speakers %}<option value="speaker:{{ s }}">Only {{ s }}</option>{% endfor %}
+      <option value="speaker:Unknown">Only unidentified</option>
+    </select>
+  </label>
+  <span class="nav-chapters">
+    {% if prev %}<a href="/book/{{ slug }}/chapter/{{ prev }}">← Previous</a>{% endif %}
+    {% if next %}<a href="/book/{{ slug }}/chapter/{{ next }}">Next →</a>{% endif %}
+  </span>
+</div>
+
+<datalist id="speakers">
+  <option value="Narrator">{% for s in speakers %}<option value="{{ s }}">{% endfor %}<option value="Unknown">
+</datalist>
+
+<ol class="script" data-slug="{{ slug }}" data-chapter="{{ chapter.index }}">
+  {% for l in lines %}
+  <li class="line type-{{ l.type }} {% if l.speaker == 'Unknown' %}unknown{% endif %}"
+      data-id="{{ l.id }}" data-type="{{ l.type }}" data-speaker="{{ l.speaker }}">
+    <div class="line-meta">
+      <input class="speaker" name="speaker" list="speakers" value="{{ l.speaker }}" aria-label="Speaker">
+      <select name="type" aria-label="Line type">{% for t in types %}<option {% if t == l.type %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+      <select name="emotion" aria-label="Emotion">{% for e in emotions %}<option {% if e == l.emotion %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      <button type="button" class="btn small say" title="Hear this line">▶</button>
+    </div>
+    <p class="line-text" contenteditable="plaintext-only" spellcheck="false">{{ l.text }}</p>
+  </li>
+  {% endfor %}
+</ol>
+{% endblock %}
