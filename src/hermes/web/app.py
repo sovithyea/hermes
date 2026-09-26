@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import io
 import json
 import shutil
@@ -133,6 +134,43 @@ def _save_photos(proj: BookProject, files: list[UploadFile]) -> None:
             shutil.copyfileobj(f.file, out)
 
 
+# --- scanning pages in the app ---------------------------------------------------
+
+@app.post("/scan/new")
+def scan_new(title: str = Form(...)):
+    proj = pipeline.create_photo_book(title.strip() or "Scanned book")
+    return RedirectResponse(f"/book/{proj.slug}/scan", status_code=303)
+
+
+@app.get("/book/{slug}/scan", response_class=HTMLResponse)
+def scan_page(request: Request, slug: str):
+    proj = project(slug)
+    phone_url = os.environ.get("HERMES_PHONE_BASE")
+    qr = None
+    if phone_url:
+        import segno
+
+        qr = segno.make(f"{phone_url}/book/{slug}/scan", error="m").svg_inline(scale=5, dark="#2a2520", light="#fffdf9")
+    pages = pipeline.scanned_pages(proj)
+    return templates.TemplateResponse(request, "scan.html", {
+        "slug": slug, "title": book_title(proj), "pages": pages[-8:][::-1], "count": len(pages),
+        "qr": qr, "phone_url": phone_url,
+    })
+
+
+@app.post("/book/{slug}/scan")
+async def scan_upload(slug: str, file: UploadFile):
+    proj = project(slug)
+    suffix = Path(file.filename or "page.jpg").suffix or ".jpg"
+    return pipeline.add_scanned_page(proj, await file.read(), suffix)
+
+
+@app.post("/book/{slug}/scan/{page_id}/delete")
+def scan_delete(slug: str, page_id: str):
+    count = pipeline.remove_scanned_page(project(slug), page_id)
+    return {"ok": True, "page": count}
+
+
 @app.post("/book/{slug}/photos")
 async def add_photos(slug: str, files: list[UploadFile]):
     proj = BookProject(slug)
@@ -148,11 +186,11 @@ async def add_photos(slug: str, files: list[UploadFile]):
 @app.get("/book/{slug}", response_class=HTMLResponse)
 def book(request: Request, slug: str):
     proj = project(slug)
-    photos = proj.dir / "photos"
+    is_photo_book = (proj.dir / "photos").is_dir()
     return templates.TemplateResponse(request, "book.html", {
         "slug": slug, "title": book_title(proj), "rows": chapter_rows(proj),
         "jobs": jobs.recent(slug), "cast": proj.load_cast(),
-        "photo_count": len([p for p in photos.iterdir() if p.is_file()]) if photos.is_dir() else None,
+        "page_count": len(pipeline.scanned_pages(proj)) if is_photo_book else None,
     })
 
 

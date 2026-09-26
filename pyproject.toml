@@ -23,6 +23,7 @@ dependencies = [
     "pypdf>=6.19.0",
     "python-multipart>=0.0.32",
     "rich>=15.0.0",
+    "segno>=1.6.6",
     "soundfile>=0.14.0",
     "typer>=0.27.2",
     "uvicorn[standard]>=0.54.0",

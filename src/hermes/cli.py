@@ -117,12 +117,49 @@ def render(slug: str, chapter: list[int] = typer.Option(..., "--chapter", "-c"))
 
 
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    phone: bool = typer.Option(False, "--phone", help="Let phones on the same Wi-Fi connect (to scan pages)"),
+) -> None:
     """Start the web app (open http://localhost:8000)."""
+    import os
+
     import uvicorn
 
-    console.print(f"[green]Hermes is running →[/] http://{'localhost' if host == '127.0.0.1' else host}:{port}")
+    if phone:
+        host = "0.0.0.0"
+        base = f"http://{_lan_ip()}:{port}"
+        os.environ["HERMES_PHONE_BASE"] = base
+        console.print(f"[green]Hermes is running →[/] http://localhost:{port}   (phones on this Wi-Fi: {base})")
+        console.print("[dim]Anyone on this Wi-Fi network can open it while it runs.[/]")
+    else:
+        console.print(f"[green]Hermes is running →[/] http://{'localhost' if host == '127.0.0.1' else host}:{port}")
     uvicorn.run("hermes.web.app:app", host=host, port=port, log_level="warning")
+
+
+def _lan_ip() -> str:
+    """This Mac's Wi-Fi/Ethernet address. Asks macOS for the physical interfaces first, because
+    VPNs such as Tailscale otherwise win the route lookup and phones on the Wi-Fi can't reach that."""
+    import socket
+    import subprocess
+
+    for iface in ("en0", "en1"):
+        try:
+            ip = subprocess.run(["ipconfig", "getifaddr", iface], capture_output=True, text=True, timeout=2).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            ip = ""
+        if ip:
+            return ip
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 
 @app.command()

@@ -123,33 +123,108 @@ def create_photo_book(title: str) -> BookProject:
     return proj
 
 
-def ocr_photos(proj: BookProject, progress: Progress | None = None) -> int:
-    """(Re)build a photo book's chapters from its photos. Each page's OCR is cached,
-    so adding more photos later only reads the new ones. Returns the page count."""
-    from .ingest import _load_txt, MIN_CHAPTER_WORDS
-    from .ocr import ocr_page, assemble, sort_photos
+MIN_PAGE_WORDS = 25        # fewer than this means the shot missed the text (blurry, cut off…)
+DUPLICATE_SIMILARITY = 0.9  # a page this similar to the previous one was photographed twice
+_scan_lock = threading.Lock()
 
-    photos = sort_photos(list((proj.dir / "photos").iterdir()))
-    cache_dir = proj.dir / "photos" / ".ocr"
-    cache_dir.mkdir(exist_ok=True)
-    pages = []
+
+def _pages_dir(proj: BookProject) -> Path:
+    """Where each page's OCR result lives. Photos themselves are deleted once read."""
+    d = proj.dir / "photos" / ".ocr"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _page_files(proj: BookProject) -> list[Path]:
+    from .ocr import sort_photos
+
+    files = {p.with_suffix("").name: p for p in _pages_dir(proj).glob("*.json")}
+    # Page JSONs are named after their photo ("00012-IMG_4410.jpg.json"); sort as photos sort.
+    order = sort_photos([Path(n) for n in files])
+    return [files[p.name] for p in order]
+
+
+def ocr_photos(proj: BookProject, progress: Progress | None = None, keep_photos: bool = False) -> int:
+    """Read any photos not yet read, delete them (only the text is kept), and rebuild the
+    book's chapters from every page read so far. Returns the number of pages."""
+    from .ocr import ocr_page, sort_photos
+
+    photos = sort_photos([p for p in (proj.dir / "photos").iterdir() if p.is_file()])
     for n, photo in enumerate(photos, start=1):
-        cached = cache_dir / f"{photo.name}.json"
-        if cached.exists():
-            pages.append(json.loads(cached.read_text()))
-        else:
-            page = ocr_page(photo)
-            cached.write_text(json.dumps(page, ensure_ascii=False))
-            pages.append(page)
+        page = ocr_page(photo)
+        (_pages_dir(proj) / f"{photo.name}.json").write_text(json.dumps(page, ensure_ascii=False))
+        if not keep_photos:
+            photo.unlink()
         if progress:
             progress(n, len(photos), f"Reading page photos ({n}/{len(photos)})")
-    text = assemble(pages)
+    return rebuild_from_pages(proj)
+
+
+def rebuild_from_pages(proj: BookProject) -> int:
+    from .ingest import _load_txt, MIN_CHAPTER_WORDS
+    from .ocr import assemble
+
+    files = _page_files(proj)
+    text = assemble([json.loads(f.read_text()) for f in files])
     (proj.dir / "source.txt").write_text(text, encoding="utf-8")
     chapters = [c for c in _load_txt(text) if c.word_count >= MIN_CHAPTER_WORDS] or _load_txt(text)
     for i, c in enumerate(chapters, start=1):
         c.index = i
-    proj.save_chapters(chapters)
-    return len(photos)
+    proj.save_chapters(chapters if text.strip() else [])
+    return len(files)
+
+
+def add_scanned_page(proj: BookProject, image: bytes, suffix: str = ".jpg") -> dict:
+    """Read one page photographed in the app. The photo is deleted straight after reading.
+    Rejects unreadable shots and accidental double shots so the reader can retake."""
+    import difflib
+
+    from .ocr import ocr_page
+
+    with _scan_lock:
+        files = _page_files(proj)
+        seq = 1 + max((int(f.name[:5]) for f in files if f.name[:5].isdigit()), default=-1)
+        name = f"{seq:05d}-scan{suffix.lower()}"
+        photo = proj.dir / "photos" / name
+        photo.write_bytes(image)
+        try:
+            page = ocr_page(photo)
+        finally:
+            photo.unlink(missing_ok=True)
+        text = " ".join(page["paragraphs"])
+        words = len(text.split())
+        if words < MIN_PAGE_WORDS:
+            return {"ok": False, "reason": "unreadable", "words": words}
+        if files:
+            prev = json.loads(files[-1].read_text())
+            prev_text = " ".join(prev["paragraphs"])
+            if difflib.SequenceMatcher(None, prev_text, text).ratio() > DUPLICATE_SIMILARITY:
+                return {"ok": False, "reason": "duplicate", "words": words}
+        (_pages_dir(proj) / f"{name}.json").write_text(json.dumps(page, ensure_ascii=False))
+        count = rebuild_from_pages(proj)
+    return {"ok": True, "id": name, "page": count, "words": words, "heading": page["heading"],
+            "preview": _preview(page)}
+
+
+def remove_scanned_page(proj: BookProject, page_id: str) -> int:
+    with _scan_lock:
+        target = _pages_dir(proj) / f"{Path(page_id).name}.json"
+        target.unlink(missing_ok=True)
+        return rebuild_from_pages(proj)
+
+
+def scanned_pages(proj: BookProject) -> list[dict]:
+    out = []
+    for n, f in enumerate(_page_files(proj), start=1):
+        page = json.loads(f.read_text())
+        out.append({"id": f.with_suffix("").name, "n": n, "heading": page["heading"], "preview": _preview(page),
+                    "words": sum(len(p.split()) for p in page["paragraphs"])})
+    return out
+
+
+def _preview(page: dict) -> str:
+    first = (page["paragraphs"] or [""])[0].replace("_", "")
+    return first[:70] + ("…" if len(first) > 70 else "")
 
 
 def _epub_title(path: Path) -> str | None:

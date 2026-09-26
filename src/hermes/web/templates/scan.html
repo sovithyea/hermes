@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Scan · {{ title }}{% endblock %}
+{% block nav %}<a href="/">Library</a><a href="/book/{{ slug }}">{{ title }}</a>{% endblock %}
+{% block body %}
+<div class="scan" data-slug="{{ slug }}" data-count="{{ count }}">
+  <section class="scan-head">
+    <h1>{{ title }}</h1>
+    <p class="scan-count"><strong id="count">{{ count }}</strong> page{{ "s" if count != 1 }} read</p>
+  </section>
+
+  {% if qr %}
+  <div class="card qr-card desktop-only">
+    <div class="qr">{{ qr|safe }}</div>
+    <div>
+      <strong>Scan with your phone</strong>
+      <p class="muted">Point your phone's camera at this code to open the scanner there. The phone must be on the same Wi-Fi as this Mac.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Live viewfinder: one tap per page. Needs a secure (https) page or this Mac itself. -->
+  <div class="viewfinder" id="viewfinder" hidden>
+    <video id="video" playsinline muted autoplay></video>
+    <div class="frame-guide"></div>
+    <button class="shutter" id="shutter" aria-label="Photograph page"></button>
+  </div>
+
+  <!-- Fallback: opens the phone's own camera for each page. -->
+  <label class="btn primary take-photo" id="take-photo" for="camera-input">Photograph next page</label>
+  <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
+
+  <p class="toast" id="toast" role="status" aria-live="polite"></p>
+
+  <ul class="tips muted">
+    <li>Hold the phone flat above the page so it fills the screen.</li>
+    <li>Good light, no fingers over the words. One page per photo, in order.</li>
+    <li>Blurry or repeated pages are caught; just take them again.</li>
+  </ul>
+
+  <h2 class="recent-title">Latest pages</h2>
+  <ol class="recent" id="recent">
+    {% for p in pages %}
+    <li data-id="{{ p.id }}">
+      <span class="pno">{{ p.n }}</span>
+      <span class="ptext">{% if p.heading %}<strong>{{ p.heading }}</strong> · {% endif %}{{ p.preview }}</span>
+      <button class="btn small remove" title="Remove this page">✕</button>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <div class="scan-done"><a class="btn" href="/book/{{ slug }}">Done for now</a></div>
+</div>
+<script src="/static/scan.js"></script>
+{% endblock %}
