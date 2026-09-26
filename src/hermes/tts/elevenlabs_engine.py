@@ -8,6 +8,7 @@ Billing is per character, so only characters explicitly switched to ElevenLabs u
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 import httpx
@@ -111,6 +112,10 @@ class ElevenLabsEngine:
                 else ("", str(detail))
         except ValueError:
             status, message = "", resp.text[:200]
+        if status == "missing_permissions":
+            perm = re.search(r"permission (\w+)", message)
+            raise ElevenLabsError(f"Your ElevenLabs API key doesn't have the '{perm.group(1) if perm else '?'}' "
+                                  "permission. Edit the key on elevenlabs.io (Developers → API keys) to allow it.")
         if resp.status_code == 401:
             raise ElevenLabsError("ElevenLabs rejected the API key. Check ELEVENLABS_API_KEY in .env.")
         if status == "quota_exceeded" or "quota" in message.lower():

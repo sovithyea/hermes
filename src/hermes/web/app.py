@@ -233,16 +233,21 @@ def cast_page(request: Request, slug: str, saved: bool = False):
     speaking = sorted([c for c in cast.characters if c.line_count], key=lambda c: -c.line_count)
     lexicon = Lexicon.load(proj.lexicon_path).entries
     eleven, eleven_error = pipeline.elevenlabs(), None
-    eleven_voices, usage = [], None
+    eleven_voices, usage, usage_error = [], None, None
     if eleven:
         try:
-            eleven_voices, usage = eleven.voice_list(), eleven.usage()
+            eleven_voices = eleven.voice_list()
         except Exception as e:
             eleven_error = str(e)
+        try:
+            usage = eleven.usage()
+        except Exception as e:  # the meter is optional (keys can lack the user_read permission)
+            usage_error = str(e)
     return templates.TemplateResponse(request, "cast.html", {
         "slug": slug, "title": book_title(proj), "cast": cast, "speaking": speaking, "saved": saved,
         "lexicon_text": "\n".join(f"{k} = {v}" for k, v in lexicon.items()),
         "eleven": bool(eleven), "eleven_error": eleven_error, "eleven_voices": eleven_voices,
+        "usage_error": usage_error,
         "usage": usage, "estimate": pipeline.elevenlabs_estimate(proj) if eleven else None,
     })
 

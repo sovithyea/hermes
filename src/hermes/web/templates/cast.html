@@ -25,12 +25,16 @@
   {% else %}
     <p class="muted">Pick <strong>ElevenLabs</strong> next to any character below. The narrator stays on free Kokoro.
       ElevenLabs lines are performed with real emotion (whispering, anger…) and charged per character of text.</p>
+    {% set left = (usage.limit - usage.used) if usage else none %}
     <div class="meters">
+      {% if usage %}
       <div><span class="muted">This month</span><strong>{{ "{:,}".format(usage.used) }} / {{ "{:,}".format(usage.limit) }}</strong><span class="muted">characters used</span></div>
+      {% endif %}
       <div><span class="muted">This book's ElevenLabs lines</span><strong>{{ "{:,}".format(estimate.total) }}</strong><span class="muted">characters in total</span></div>
-      <div><span class="muted">Still to generate</span><strong {% if estimate.pending > usage.limit - usage.used %}class="over"{% endif %}>{{ "{:,}".format(estimate.pending) }}</strong>
-        <span class="muted">{% if estimate.pending > usage.limit - usage.used %}more than you have left{% else %}fits in what's left{% endif %}</span></div>
+      <div><span class="muted">Still to generate</span><strong {% if left is not none and estimate.pending > left %}class="over"{% endif %}>{{ "{:,}".format(estimate.pending) }}</strong>
+        <span class="muted">{% if left is none %}characters{% elif estimate.pending > left %}more than you have left{% else %}fits in what's left{% endif %}</span></div>
     </div>
+    {% if usage_error %}<p class="muted small">Monthly usage isn't shown: {{ usage_error }}</p>{% endif %}
   {% endif %}
 </div>
 

@@ -129,6 +129,7 @@ def serve(
 
     import uvicorn
 
+    _stay_awake()
     if tailscale:
         base = _tailscale_https(port)
         os.environ["HERMES_PHONE_BASE"] = base
@@ -143,6 +144,17 @@ def serve(
     else:
         console.print(f"[green]Hermes is running →[/] http://{'localhost' if host == '127.0.0.1' else host}:{port}")
     uvicorn.run("hermes.web.app:app", host=host, port=port, log_level="warning")
+
+
+def _stay_awake() -> None:
+    """Stop the Mac idling to sleep while the app runs (so shared links keep working).
+    The display may still turn off; caffeinate ends by itself when this process exits."""
+    import os
+    import shutil
+    import subprocess
+
+    if shutil.which("caffeinate"):
+        subprocess.Popen(["caffeinate", "-i", "-s", "-w", str(os.getpid())])
 
 
 TAILSCALE = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
