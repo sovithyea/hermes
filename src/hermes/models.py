@@ -43,6 +43,10 @@ class Character(BaseModel):
 class Cast(BaseModel):
     # Name of the character whose eyes the story is told through (first-person books).
     pov_character: str | None = None
+    # In first-person books the POV character's dialogue uses the narrator voice unless split.
+    split_pov_voice: bool = False
+    narrator_voice: str | None = None
+    unknown_voice: str | None = None  # for lines the director couldn't attribute
     characters: list[Character] = Field(default_factory=list)
 
     def find(self, name: str) -> Character | None:

@@ -64,6 +64,24 @@ class BookProject:
     def load_script(self, chapter: int) -> list[ScriptLine]:
         return [ScriptLine.model_validate(d) for d in _read_json(self.script_path(chapter))]
 
+    def directed_chapters(self) -> list[int]:
+        return sorted(int(p.stem[2:]) for p in (self.dir / "script").glob("ch*.json"))
+
+    def all_scripts(self) -> list[list[ScriptLine]]:
+        return [self.load_script(n) for n in self.directed_chapters()]
+
+    # audio
+    @property
+    def lexicon_path(self) -> Path:
+        return self.dir / "lexicon.json"
+
+    @property
+    def cache_dir(self) -> Path:
+        return self.dir / "cache"
+
+    def audio_path(self, chapter: int) -> Path:
+        return self.dir / "audio" / f"ch{chapter:03d}.mp3"
+
 
 def _write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

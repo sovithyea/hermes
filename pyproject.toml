@@ -10,10 +10,14 @@ requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "ebooklib>=0.20",
+    "kokoro>=0.9.4",
+    "numpy>=2.5.3",
     "ollama>=0.6.2",
     "pydantic>=2.13.5",
+    "pydub>=0.25.1",
     "pypdf>=6.19.0",
     "rich>=15.0.0",
+    "soundfile>=0.14.0",
     "typer>=0.27.2",
 ]
 

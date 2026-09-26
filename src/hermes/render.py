@@ -1,0 +1,141 @@
+"""Script lines -> audio. Every line is cached by what affects its sound, so edits re-render only what changed."""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import soundfile as sf
+
+from .lexicon import Lexicon
+from .models import NARRATOR, Cast, ScriptLine
+from .tts.base import EMOTION_PROSODY, SAMPLE_RATE, Prosody, TTSEngine
+
+log = logging.getLogger(__name__)
+
+PAUSE_SAME_PARAGRAPH = 0.15
+PAUSE_NEW_PARAGRAPH = 0.45
+PAUSE_AFTER_TITLE = 1.2
+
+# ffmpeg filter chains for special line types.
+EFFECTS = {
+    # Dragon mind-speech: deeper, slightly slower, with a cavernous echo.
+    "dragon": "asetrate=24000*0.86,aresample=24000,atempo=1.08,aecho=0.8:0.6:60|110:0.3|0.2",
+    # Human mind-speech: a light echo so it reads as "inside the head".
+    "mind": "aecho=0.8:0.5:40:0.2",
+    # Inner thoughts: softer and a little closer.
+    "thought": "lowpass=f=7000,volume=-2dB",
+}
+
+
+@dataclass
+class RenderStats:
+    lines: int = 0
+    cache_hits: int = 0
+    seconds: float = 0.0
+
+
+class Renderer:
+    def __init__(self, engine: TTSEngine, cast: Cast, lexicon: Lexicon, cache_dir: Path):
+        self.engine, self.cast, self.lexicon = engine, cast, lexicon
+        self.cache_dir = cache_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self.stats = RenderStats()
+
+    # --- per line -----------------------------------------------------------
+
+    def voice_for(self, line: ScriptLine) -> str:
+        if line.type == "narration" or line.speaker == NARRATOR:
+            return self.cast.narrator_voice
+        c = self.cast.find(line.speaker)
+        return (c.voice if c and c.voice else None) or self.cast.unknown_voice
+
+    def effect_for(self, line: ScriptLine) -> str | None:
+        if line.type == "mindspeech":
+            c = self.cast.find(line.speaker)
+            return "dragon" if c and c.kind == "dragon" else "mind"
+        if line.type == "thought":
+            return "thought"
+        return None
+
+    def line_audio(self, line: ScriptLine) -> np.ndarray:
+        voice = self.voice_for(line)
+        prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" else Prosody()
+        effect = self.effect_for(line)
+        text = self.lexicon.apply(line.text)
+        key = cache_key(self.engine.name, voice, text, prosody, effect)
+        path = self.cache_dir / f"{key}.wav"
+        self.stats.lines += 1
+        if path.exists():
+            self.stats.cache_hits += 1
+            audio, _ = sf.read(path, dtype="float32")
+            return audio
+        audio = self.engine.synth(text, voice, prosody.speed)
+        if prosody.gain_db:
+            audio = audio * (10 ** (prosody.gain_db / 20))
+        if effect:
+            audio = apply_ffmpeg_filter(audio, EFFECTS[effect])
+        audio = np.clip(audio, -1.0, 1.0).astype(np.float32)
+        sf.write(path, audio, SAMPLE_RATE)
+        return audio
+
+    # --- per chapter ----------------------------------------------------------
+
+    def chapter_audio(self, title: str, lines: list[ScriptLine], on_progress=None) -> np.ndarray:
+        parts: list[np.ndarray] = []
+        if title:
+            parts += [self.line_audio(_title_line(title, lines)), silence(PAUSE_AFTER_TITLE)]
+        prev_para = None
+        for i, line in enumerate(lines):
+            if prev_para is not None:
+                parts.append(silence(PAUSE_NEW_PARAGRAPH if line.paragraph != prev_para else PAUSE_SAME_PARAGRAPH))
+            parts.append(self.line_audio(line))
+            prev_para = line.paragraph
+            if on_progress:
+                on_progress(i + 1, len(lines))
+        audio = np.concatenate(parts) if parts else np.zeros(0, np.float32)
+        self.stats.seconds += len(audio) / SAMPLE_RATE
+        return audio
+
+
+def cache_key(engine: str, voice: str, text: str, prosody: Prosody, effect: str | None) -> str:
+    raw = "\x1f".join([engine, voice, text, f"{prosody.speed:.3f}", f"{prosody.gain_db:.2f}", effect or ""])
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+
+def silence(seconds: float) -> np.ndarray:
+    return np.zeros(int(seconds * SAMPLE_RATE), np.float32)
+
+
+def _title_line(title: str, lines: list[ScriptLine]) -> ScriptLine:
+    chapter = lines[0].chapter if lines else 0
+    return ScriptLine(id=f"ch{chapter:03d}-title", chapter=chapter, paragraph=-1,
+                      type="narration", speaker=NARRATOR, text=title.rstrip(".") + ".")
+
+
+def apply_ffmpeg_filter(audio: np.ndarray, af: str) -> np.ndarray:
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+         "-af", af, "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "pipe:1"],
+        input=audio.astype(np.float32).tobytes(), capture_output=True, check=True,
+    )
+    return np.frombuffer(proc.stdout, dtype=np.float32).copy()
+
+
+def export_mp3(audio: np.ndarray, out: Path, title: str = "", album: str = "", track: int | None = None) -> Path:
+    """Loudness-normalise (audiobook-style -18 LUFS) and encode to MP3."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    meta = ["-metadata", f"title={title}", "-metadata", f"album={album}", "-metadata", "genre=Audiobook"]
+    if track is not None:
+        meta += ["-metadata", f"track={track}"]
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+         "-af", "loudnorm=I=-18:TP=-2:LRA=11", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "96k",
+         *meta, str(out)],
+        input=audio.astype(np.float32).tobytes(), check=True,
+    )
+    return out
