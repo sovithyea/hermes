@@ -265,6 +265,9 @@ def chapter_mp3(slug: str, n: int):
 def cast_page(request: Request, slug: str, saved: bool = False):
     proj = project(slug)
     cast = proj.load_cast()
+    if not cast.narrator_voice or any(c.line_count and not c.voice for c in cast.characters):
+        cast = auto_cast(cast, proj.all_scripts())  # fill in any voices that are missing
+        proj.save_cast(cast)
     speaking = sorted([c for c in cast.characters if c.line_count], key=lambda c: -c.line_count)
     lexicon = Lexicon.load(proj.lexicon_path).entries
     eleven, eleven_error = pipeline.elevenlabs(), None

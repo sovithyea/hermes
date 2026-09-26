@@ -17,6 +17,10 @@ from .tts.base import EMOTION_PROSODY, SAMPLE_RATE, Prosody, TTSEngine
 
 log = logging.getLogger(__name__)
 
+# Used only if a cast file has lost its voices (casting normally fills these in).
+DEFAULT_NARRATOR = "af_heart"
+DEFAULT_UNKNOWN = "af_river"
+
 PAUSE_SAME_PARAGRAPH = 0.15
 PAUSE_NEW_PARAGRAPH = 0.45
 PAUSE_AFTER_TITLE = 1.2
@@ -52,14 +56,15 @@ class Renderer:
     # --- per line -----------------------------------------------------------
 
     def engine_and_voice(self, line: ScriptLine) -> tuple[TTSEngine, str]:
+        narrator = self.cast.narrator_voice or DEFAULT_NARRATOR
         if line.type == "narration" or line.speaker == NARRATOR:
-            return self.default, self.cast.narrator_voice
+            return self.default, narrator
         c = self.cast.find(line.speaker)
         if c and c.name == self.cast.pov_character and not self.cast.split_pov_voice:
-            return self.default, self.cast.narrator_voice  # first-person narrator speaks in the narrator voice
+            return self.default, narrator  # first-person narrator speaks in the narrator voice
         if c and c.engine != self.default.name and c.engine in self.engines and c.engine_voice:
             return self.engines[c.engine], c.engine_voice
-        return self.default, (c.voice if c and c.voice else None) or self.cast.unknown_voice
+        return self.default, (c.voice if c and c.voice else None) or self.cast.unknown_voice or DEFAULT_UNKNOWN
 
     def voice_for(self, line: ScriptLine) -> str:
         return self.engine_and_voice(line)[1]

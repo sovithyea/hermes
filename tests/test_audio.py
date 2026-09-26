@@ -87,3 +87,10 @@ def test_dragon_lines_get_dragon_effect_even_if_typed_as_thought(tmp_path):
     assert r.effect_for(line(2, "Maren", type="mindspeech")) == "mind"
     assert r.effect_for(line(3, "Maren", type="thought")) == "thought"
     assert r.effect_for(line(4, "Narrator", type="narration")) is None
+
+
+def test_missing_voices_fall_back_instead_of_crashing(tmp_path):
+    r = Renderer(FakeEngine(), Cast(characters=[Character(name="A")]), Lexicon(), tmp_path)
+    assert r.voice_for(line(0, "Narrator", type="narration")) == "af_heart"
+    assert r.voice_for(line(1, "A")) == "af_river"
+    r.fingerprint("Chapter One", [line(0, "Narrator", type="narration"), line(1, "A")])  # no TypeError
