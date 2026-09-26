@@ -38,6 +38,10 @@ Voices: `af_*`/`bf_*` are American/British female, `am_*`/`bm_*` male.
 
 ## Web app
 
+**Easiest:** double-click `Start Hermes.command` (starts Ollama if needed, serves on your private
+Tailscale link, opens the browser). Keep its window open while the app is in use.
+
+
 ```sh
 uv run hermes serve        # http://localhost:8000
 ```
