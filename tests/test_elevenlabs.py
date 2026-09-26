@@ -92,3 +92,15 @@ def test_hybrid_routing_narrator_on_kokoro_character_on_elevenlabs(tmp_path):
     assert tts == [{"text": "[whispers] line 1", "model_id": "eleven_v3"}]  # only Kael went to ElevenLabs
     assert [(t, v) for t, v, _ in kokoro.calls] == [("line 0", "af_heart"), ("line 2", "af_heart"), ("line 3", "af_bella")]
     assert kokoro.calls[2][2] > 1.0  # Kokoro still fakes "angry" with pace
+
+
+def test_narrator_on_elevenlabs_also_voices_pov_dialogue(tmp_path):
+    reqs = []
+    kokoro = FakeKokoro()
+    cast = Cast(narrator_voice="af_heart", narrator_engine="elevenlabs", narrator_engine_voice="v-f",
+                pov_character="Violet", characters=[Character(name="Violet", voice="af_heart")])
+    r = Renderer({"kokoro": kokoro, "elevenlabs": engine(reqs)}, cast, Lexicon(), tmp_path)
+    L = lambda i, s, t, e="neutral": ScriptLine(id=f"n{i}", chapter=1, paragraph=i, type=t, speaker=s, text=f"t{i}", emotion=e)
+    r.chapter_audio("Untitled", [L(0, "Narrator", "narration", "tense"), L(1, "Violet", "dialogue")])
+    sent = [json.loads(q.content)["text"] for q in reqs if "text-to-speech" in q.url.path]
+    assert sent == ["[tense] t0", "t1"] and kokoro.calls == []  # no "Untitled" read aloud either

@@ -55,13 +55,19 @@ class Renderer:
 
     # --- per line -----------------------------------------------------------
 
+    def narrator(self) -> tuple[TTSEngine, str]:
+        cast = self.cast
+        if cast.narrator_engine != self.default.name and cast.narrator_engine in self.engines \
+                and cast.narrator_engine_voice:
+            return self.engines[cast.narrator_engine], cast.narrator_engine_voice
+        return self.default, cast.narrator_voice or DEFAULT_NARRATOR
+
     def engine_and_voice(self, line: ScriptLine) -> tuple[TTSEngine, str]:
-        narrator = self.cast.narrator_voice or DEFAULT_NARRATOR
         if line.type == "narration" or line.speaker == NARRATOR:
-            return self.default, narrator
+            return self.narrator()
         c = self.cast.find(line.speaker)
         if c and c.name == self.cast.pov_character and not self.cast.split_pov_voice:
-            return self.default, narrator  # first-person narrator speaks in the narrator voice
+            return self.narrator()  # first-person narrator speaks in the narrator voice
         if c and c.engine != self.default.name and c.engine in self.engines and c.engine_voice:
             return self.engines[c.engine], c.engine_voice
         return self.default, (c.voice if c and c.voice else None) or self.cast.unknown_voice or DEFAULT_UNKNOWN
@@ -84,8 +90,9 @@ class Renderer:
     def _plan(self, line: ScriptLine):
         engine, voice = self.engine_and_voice(line)
         native = getattr(engine, "native_emotion", False)
-        # Engines that can act get the emotion itself; others approximate it with pace and volume.
-        emotion = line.emotion if native and line.type != "narration" else None
+        # Engines that can act get the emotion itself (narration too, if someone marked it);
+        # others approximate dialogue emotion with pace and volume and read narration plainly.
+        emotion = line.emotion if native else None
         prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" and not native else Prosody()
         effect = self.effect_for(line)
         text = self.lexicon.apply(line.text)
@@ -93,6 +100,7 @@ class Renderer:
 
     def fingerprint(self, title: str, lines: list[ScriptLine]) -> str:
         """Identifies exactly what a chapter would sound like; changes iff its audio would change."""
+        title = spoken_title_or_none(title)
         keys = [self._plan(_title_line(title, lines))[-1] if title else ""]
         keys += [f"{self._plan(l)[-1]}@{l.paragraph}" for l in lines]
         return hashlib.sha256("|".join(keys).encode()).hexdigest()[:24]
@@ -121,6 +129,7 @@ class Renderer:
 
     def chapter_audio(self, title: str, lines: list[ScriptLine], on_progress=None) -> np.ndarray:
         parts: list[np.ndarray] = []
+        title = spoken_title_or_none(title)
         if title:
             parts += [self.line_audio(_title_line(title, lines)), silence(PAUSE_AFTER_TITLE)]
         prev_para = None
@@ -134,6 +143,11 @@ class Renderer:
         audio = np.concatenate(parts) if parts else np.zeros(0, np.float32)
         self.stats.seconds += len(audio) / SAMPLE_RATE
         return audio
+
+
+def spoken_title_or_none(title: str) -> str | None:
+    """Placeholder titles (a scanned page with no chapter heading) aren't read aloud."""
+    return None if not title or title.strip().lower() == "untitled" else title
 
 
 def cache_key(engine: str, voice: str, text: str, prosody: Prosody, effect: str | None,

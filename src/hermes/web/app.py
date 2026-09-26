@@ -299,6 +299,9 @@ async def save_cast(request: Request, slug: str):
     cast.narrator_voice = form.get("narrator_voice") or cast.narrator_voice
     cast.unknown_voice = form.get("unknown_voice") or cast.unknown_voice
     cast.split_pov_voice = form.get("split_pov_voice") == "on"
+    if "narrator_engine" in form:
+        cast.narrator_engine = "elevenlabs" if form["narrator_engine"] == "elevenlabs" else "kokoro"
+        cast.narrator_engine_voice = form.get("narrator_engine_voice") or cast.narrator_engine_voice
     for c in cast.characters:
         key = c.name
         if f"voice::{key}" in form:
@@ -311,6 +314,10 @@ async def save_cast(request: Request, slug: str):
     eleven = pipeline.elevenlabs()
     if eleven:
         taken = {c.engine_voice for c in cast.characters if c.engine == "elevenlabs" and c.engine_voice}
+        if cast.narrator_engine == "elevenlabs" and not cast.narrator_engine_voice:
+            pov = cast.find(cast.pov_character) if cast.pov_character else None
+            cast.narrator_engine_voice = eleven.pick_voice(pov.gender if pov else "female", taken)
+            taken.add(cast.narrator_engine_voice)
         for c in cast.characters:
             if c.engine == "elevenlabs" and not c.engine_voice:
                 c.engine_voice = eleven.pick_voice("male" if c.kind == "dragon" else c.gender, taken)

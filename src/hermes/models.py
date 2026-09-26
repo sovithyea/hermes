@@ -47,7 +47,9 @@ class Cast(BaseModel):
     pov_character: str | None = None
     # In first-person books the POV character's dialogue uses the narrator voice unless split.
     split_pov_voice: bool = False
-    narrator_voice: str | None = None
+    narrator_voice: str | None = None  # Kokoro voice (always kept as the free fallback)
+    narrator_engine: Literal["kokoro", "elevenlabs"] = "kokoro"
+    narrator_engine_voice: str | None = None
     unknown_voice: str | None = None  # for lines the director couldn't attribute
     characters: list[Character] = Field(default_factory=list)
 

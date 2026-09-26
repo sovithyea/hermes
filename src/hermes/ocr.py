@@ -105,14 +105,7 @@ def _vision_lines(path: str, size: tuple[int, int]) -> list[Line]:
         corners = [(pt.x * W, (1 - pt.y) * H) for pt in
                    (obs.topLeft(), obs.topRight(), obs.bottomLeft(), obs.bottomRight())]
         raw.append((text, corners, words))
-    # Page tilt = typical angle of the text baselines (long lines are the most reliable).
-    angles, weights = [], []
-    for _, (tl, tr, bl, br), _ in raw:
-        dx, dy = br[0] - bl[0], br[1] - bl[1]
-        if dx > 0:
-            angles.append(np.arctan2(dy, dx))
-            weights.append(dx)
-    theta = float(np.average(angles, weights=weights)) if angles else 0.0
+    raw, theta = _main_page_lines(raw)
     cos, sin = np.cos(-theta), np.sin(-theta)
     cx, cy = W / 2, H / 2
 
@@ -123,9 +116,75 @@ def _vision_lines(path: str, size: tuple[int, int]) -> list[Line]:
     lines = []
     for text, (tl, tr, bl, br), words in raw:
         (x_tl, y_tl), (x_bl, y_bl), (x_tr, _), (x_br, _) = map(straighten, (tl, bl, tr, br))
+        for w in words:  # word edges in the same straightened frame, for finding the gutter
+            x, y, bw, bh = w._box
+            xs = [straighten((px * W, py * H))[0] for px, py in ((x, y), (x + bw, y), (x, y + bh), (x + bw, y + bh))]
+            w._sx0, w._sx1 = min(xs), max(xs)
         lines.append(Line(text, min(x_tl, x_bl), max(x_tr, x_br), (y_tl + y_bl) / 2, abs(y_bl - y_tl), words))
     lines.sort(key=lambda l: l.y)
-    return lines
+    return _keep_main_page(lines)
+
+
+PAGE_ANGLE_TOLERANCE = np.radians(12)
+
+
+def _main_page_lines(raw: list) -> tuple[list, float]:
+    """Keep the lines of the page being photographed, dropping the facing page's edge.
+
+    In a photo of an open book the facing page curves into the spine, so its lines run at a
+    clearly different angle (tested photo: this page -9°, facing page +30° to +55°). Find the
+    dominant angle (weighted by line length, i.e. by amount of text) and keep lines near it.
+    Returns (kept lines, page tilt in radians)."""
+    angled = []
+    for item in raw:
+        tl, tr, bl, br = item[1]
+        dx, dy = br[0] - bl[0], br[1] - bl[1]
+        angled.append((item, float(np.arctan2(dy, dx)), float(np.hypot(dx, dy))))
+    if not angled:
+        return raw, 0.0
+    angles = np.array([a for _, a, _ in angled])
+    weights = np.array([w for _, _, w in angled])
+    # The angle with the most text within the tolerance window.
+    candidates = np.radians(np.arange(-60, 60.5, 1.0))
+    support = [weights[np.abs(angles - c) <= PAGE_ANGLE_TOLERANCE].sum() for c in candidates]
+    main = candidates[int(np.argmax(support))]
+    keep = np.abs(angles - main) <= PAGE_ANGLE_TOLERANCE
+    theta = float(np.average(angles[keep], weights=weights[keep]))
+    return [item for (item, _, _), k in zip(angled, keep) if k], theta
+
+
+def _keep_main_page(lines: list[Line]) -> list[Line]:
+    """Photos of an open book often catch the edge of the facing page, and OCR can even glue its
+    fragments onto this page's lines. Find the gutter (an x position that almost no word crosses,
+    with plenty of text on both sides) and keep only the side with more words."""
+    words = [w for l in lines for w in l.words]
+    if len(words) < 40:
+        return lines
+    best = None
+    for gx in np.arange(0.05, 0.951, 0.005):
+        left = sum(1 for w in words if w._sx1 <= gx)
+        right = sum(1 for w in words if w._sx0 >= gx)
+        crossing = len(words) - left - right
+        minority = min(left, right)
+        # A real gutter: hardly crossed, and the smaller side is more than stray marks.
+        if crossing <= 0.01 * len(words) and minority >= max(8, 0.04 * len(words)):
+            score = (crossing, -minority)
+            if best is None or score < best[0]:
+                best = (score, gx, left >= right)
+    if best is None:
+        return lines
+    _, gx, keep_left = best
+    kept = []
+    for line in lines:
+        ws = [w for w in line.words if (w._sx1 <= gx if keep_left else w._sx0 >= gx)]
+        if not ws:
+            continue
+        if len(ws) != len(line.words):
+            line.words = ws
+            line.text = " ".join(w.text for w in ws)
+            line.x0, line.x1 = min(w._sx0 for w in ws), max(w._sx1 for w in ws)
+        kept.append(line)
+    return kept
 
 
 # --- italics --------------------------------------------------------------------

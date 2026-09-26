@@ -43,8 +43,22 @@
     <h2>Narrator</h2>
     <div class="cast-row">
       <div class="who"><strong>Narrator</strong><span class="muted">Reads everything that isn't dialogue</span></div>
-      <div class="voice-pick">{{ voice_select("narrator_voice", cast.narrator_voice) }}<button type="button" class="btn small preview" data-name="">▶</button></div>
+      <div class="voice-pick">
+        {% if eleven and eleven_voices %}
+        <select name="narrator_engine" class="engine-select" aria-label="Narrator voice engine">
+          <option value="kokoro" {% if cast.narrator_engine != "elevenlabs" %}selected{% endif %}>Kokoro</option>
+          <option value="elevenlabs" {% if cast.narrator_engine == "elevenlabs" %}selected{% endif %}>ElevenLabs</option>
+        </select>
+        <select name="narrator_engine_voice" class="voice-select eleven-voice" {% if cast.narrator_engine != "elevenlabs" %}hidden{% endif %}>
+          <option value="">Automatic</option>
+          {% for v in eleven_voices %}<option value="{{ v.id }}" {% if v.id == cast.narrator_engine_voice %}selected{% endif %}>{{ v.name }}{% if v.gender %} — {{ v.gender }}{% endif %}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <span class="kokoro-voice" {% if eleven and eleven_voices and cast.narrator_engine == "elevenlabs" %}hidden{% endif %}>{{ voice_select("narrator_voice", cast.narrator_voice) }}</span>
+        <button type="button" class="btn small preview" data-name="">▶</button>
+      </div>
     </div>
+    {% if eleven %}<p class="muted small">Narration is most of a book, so an ElevenLabs narrator uses far more of your allowance than a few characters do.</p>{% endif %}
     {% if cast.pov_character %}
     <label class="check">
       <input type="checkbox" name="split_pov_voice" {% if cast.split_pov_voice %}checked{% endif %}>
