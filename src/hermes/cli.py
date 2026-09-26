@@ -121,13 +121,20 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8000,
     phone: bool = typer.Option(False, "--phone", help="Let phones on the same Wi-Fi connect (to scan pages)"),
+    tailscale: bool = typer.Option(False, "--tailscale",
+                                   help="Private https link via Tailscale: works from anywhere, only for your tailnet"),
 ) -> None:
     """Start the web app (open http://localhost:8000)."""
     import os
 
     import uvicorn
 
-    if phone:
+    if tailscale:
+        base = _tailscale_https(port)
+        os.environ["HERMES_PHONE_BASE"] = base
+        console.print(f"[green]Hermes is running →[/] http://localhost:{port}   (private link: {base})")
+        console.print("[dim]Only devices signed in to your Tailscale (or ones you share this Mac with) can open it.[/]")
+    elif phone:
         host = "0.0.0.0"
         base = f"http://{_lan_ip()}:{port}"
         os.environ["HERMES_PHONE_BASE"] = base
@@ -136,6 +143,31 @@ def serve(
     else:
         console.print(f"[green]Hermes is running →[/] http://{'localhost' if host == '127.0.0.1' else host}:{port}")
     uvicorn.run("hermes.web.app:app", host=host, port=port, log_level="warning")
+
+
+TAILSCALE = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+
+def _tailscale_https(port: int) -> str:
+    """Point Tailscale's private https address at the app (the app itself stays on localhost)."""
+    import json
+    import shutil
+    import subprocess
+
+    exe = shutil.which("tailscale") or TAILSCALE
+    try:
+        status = json.loads(subprocess.run([exe, "status", "--json"], capture_output=True, text=True,
+                                           timeout=10).stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        raise typer.BadParameter("Tailscale isn't running. Open the Tailscale app and log in.")
+    name = (status.get("Self") or {}).get("DNSName", "").rstrip(".")
+    if not name:
+        raise typer.BadParameter("Tailscale isn't logged in. Open the Tailscale app and log in.")
+    proc = subprocess.run([exe, "serve", "--bg", "--https=443", f"http://127.0.0.1:{port}"],
+                          capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        raise typer.BadParameter("Tailscale couldn't publish the https link:\n" + (proc.stdout + proc.stderr).strip())
+    return f"https://{name}"
 
 
 def _lan_ip() -> str:

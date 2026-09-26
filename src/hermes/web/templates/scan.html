@@ -13,7 +13,8 @@
     <div class="qr">{{ qr|safe }}</div>
     <div>
       <strong>Scan with your phone</strong>
-      <p class="muted">Point your phone's camera at this code to open the scanner there. The phone must be on the same Wi-Fi as this Mac.</p>
+      <p class="muted">Point your phone's camera at this code to open the scanner there.
+        {% if phone_url.startswith("https") %}The phone needs the Tailscale app switched on (any Wi-Fi or mobile data works).{% else %}The phone must be on the same Wi-Fi as this Mac.{% endif %}</p>
     </div>
   </div>
   {% endif %}

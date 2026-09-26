@@ -48,7 +48,12 @@ Apple's on-device OCR; italics (often the only marker of telepathic speech) are 
 measuring letter slant. Check the result in `library/<slug>/source.txt`. CLI equivalent:
 `uv run hermes photos <folder> --title "Book title"`.
 
-To upload straight from a phone on the same Wi-Fi, run `uv run hermes serve --host 0.0.0.0`
+To scan from a phone anywhere, use Tailscale (free): install it on the Mac and the phone,
+sign in to the same account, then run `uv run hermes serve --tailscale`. The app gets a private
+https link (only your tailnet can open it) and the scanner gets a one-tap live viewfinder.
+Share the Mac from the Tailscale admin console to give a friend access.
+
+Alternatively, to upload straight from a phone on the same Wi-Fi, run `uv run hermes serve --phone`
 and open `http://<this-mac>.local:8000` on the phone (anyone on that network can reach it while
 it runs), or AirDrop the photos to the Mac.
 
