@@ -16,7 +16,7 @@ from ..store import BookProject
 
 log = logging.getLogger(__name__)
 
-JobKind = Literal["direct", "render"]
+JobKind = Literal["ocr", "direct", "render"]
 
 
 @dataclass
@@ -38,6 +38,8 @@ class Job:
 
     @property
     def label(self) -> str:
+        if self.kind == "ocr":
+            return "Reading page photos"
         what = "Reading" if self.kind == "direct" else "Voicing"
         chs = self.chapters
         span = f"chapter {chs[0]}" if len(chs) == 1 else f"{len(chs)} chapters"
@@ -53,10 +55,14 @@ class JobQueue:
 
     def submit(self, slug: str, kind: JobKind, chapters: list[int]) -> Job | None:
         # Skip chapters already waiting for the same work.
-        pending = {c for j in self.active(slug) if j.kind == kind for c in j.chapters}
-        chapters = [c for c in chapters if c not in pending]
-        if not chapters:
-            return None
+        if kind == "ocr":
+            if any(j.kind == "ocr" and j.status == "queued" for j in self.active(slug)):
+                return None  # a queued OCR run will pick up the new photos anyway
+        else:
+            pending = {c for j in self.active(slug) if j.kind == kind for c in j.chapters}
+            chapters = [c for c in chapters if c not in pending]
+            if not chapters:
+                return None
         job = Job(next(self._ids), slug, kind, chapters)
         self.jobs[job.id] = job
         self._q.put(job)
@@ -83,7 +89,9 @@ class JobQueue:
 
             try:
                 proj = BookProject(job.slug)
-                if job.kind == "direct":
+                if job.kind == "ocr":
+                    pipeline.ocr_photos(proj, progress)
+                elif job.kind == "direct":
                     pipeline.direct(proj, job.chapters, progress)
                 else:
                     pipeline.render(proj, job.chapters, progress)

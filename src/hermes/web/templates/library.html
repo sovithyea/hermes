@@ -5,15 +5,30 @@
   <p class="muted">Add a book, let Hermes work out who says what, then listen with a full cast of voices.</p>
 </section>
 
-<form class="upload" action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
-  <label class="dropzone" for="file">
-    <strong>Add a book</strong>
-    <span class="muted">EPUB works best · PDF and TXT are OK</span>
-    <input id="file" name="file" type="file" accept=".epub,.pdf,.txt" required
-           onchange="this.form.classList.add('busy'); this.form.submit()">
-  </label>
-  <p class="busy-note">Reading the book…</p>
-</form>
+<div class="uploads">
+  <form class="upload" action="/upload" method="post" enctype="multipart/form-data">
+    <label class="dropzone" for="file">
+      <strong>Add a book file</strong>
+      <span class="muted">EPUB works best · PDF and TXT are OK</span>
+      <input id="file" name="files" type="file" accept=".epub,.pdf,.txt" required
+             onchange="this.form.classList.add('busy'); this.form.submit()">
+    </label>
+    <p class="busy-note">Reading the book…</p>
+  </form>
+
+  <form class="upload photo-upload" action="/upload" method="post" enctype="multipart/form-data">
+    <div class="dropzone">
+      <strong>Add photographed pages</strong>
+      <span class="muted">For a printed book: photograph each page in order, then upload them all.</span>
+      <input name="title" placeholder="Book title" required
+             onchange="if (this.form.files.files.length) { this.form.classList.add('busy'); this.form.submit() }">
+      <label class="btn" for="photos">Choose photos</label>
+      <input id="photos" name="files" type="file" accept="image/*,.heic,.heif" multiple required
+             onchange="if (this.form.title.value.trim()) { this.form.classList.add('busy'); this.form.submit() } else { this.form.title.focus() }">
+    </div>
+    <p class="busy-note">Uploading photos…</p>
+  </form>
+</div>
 
 {% if books %}
 <ul class="shelf">

@@ -68,13 +68,21 @@ code { background: var(--soft); padding: 1px 5px; border-radius: 4px; font-size:
 .btn:disabled { opacity: 0.6; cursor: wait; }
 
 /* library */
-.upload { margin-bottom: 32px; }
+.uploads { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 32px; }
+.upload { margin: 0; }
+.upload .dropzone { height: 100%; }
+.photo-upload .dropzone { cursor: default; }
+.photo-upload input[name=title] { width: min(100%, 280px); margin-top: 8px; text-align: center; }
+.photo-upload .btn { margin-top: 6px; }
+.photo-strip { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+.photo-strip p { margin: 2px 0 0; font-size: 13.5px; }
+.empty { padding: 20px 0; }
 .dropzone { display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center;
             padding: 36px 16px; border: 1.5px dashed var(--line); border-radius: var(--radius);
             background: var(--card); cursor: pointer; text-align: center; }
 .dropzone:hover { border-color: var(--accent); }
 .dropzone strong { font: 600 18px var(--serif); }
-.dropzone input { display: none; }
+.dropzone input[type=file] { display: none; }
 .busy-note { display: none; text-align: center; color: var(--muted); }
 .upload.busy .dropzone { opacity: 0.5; pointer-events: none; }
 .upload.busy .busy-note { display: block; }

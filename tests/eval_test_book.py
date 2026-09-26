@@ -12,7 +12,7 @@ from build_test_book import GOLD  # noqa: E402
 
 from hermes.store import BookProject  # noqa: E402
 
-proj = BookProject("black-dragons-choice")
+proj = BookProject(sys.argv[1] if len(sys.argv) > 1 else "black-dragons-choice")
 cast = proj.load_cast()
 main = {"Maren", "Ione", "Brask", "Kael", "Skarth", "Professor Hale"}
 

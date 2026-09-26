@@ -13,6 +13,9 @@
   </div>
   {% endfor %}
 
+  {% if not rows %}
+  <p class="muted empty">{% if running %}Chapters will appear here once the pages are read.{% else %}No chapters found yet. Add page photos, or check that the photos show whole pages.{% endif %}</p>
+  {% else %}
   <table class="chapters">
     <thead><tr><th>#</th><th>Chapter</th><th class="num">Words</th><th>Status</th><th></th></tr></thead>
     <tbody>
@@ -47,4 +50,5 @@
     {% endfor %}
     </tbody>
   </table>
+  {% endif %}
 </div>

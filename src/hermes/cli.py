@@ -38,6 +38,28 @@ def ingest(path: Path) -> None:
 
 
 @app.command()
+def photos(folder: Path, title: str = typer.Option(..., help="Book title")) -> None:
+    """Import photos of printed pages (a folder of JPG/PNG/HEIC, in shooting order)."""
+    import shutil
+
+    from . import pipeline
+    from .ocr import sort_photos
+
+    proj = pipeline.create_photo_book(title)
+    for i, src in enumerate(sort_photos(list(folder.iterdir()))):
+        shutil.copyfile(src, proj.dir / "photos" / f"{i:05d}-{src.name}")
+    with Progress(console=console) as progress:
+        task = progress.add_task("Reading pages", total=None)
+        pages = pipeline.ocr_photos(proj, lambda d, t, m: progress.update(task, completed=d, total=t))
+    table = Table("#", "Title", "Words")
+    for c in proj.load_chapters():
+        table.add_row(str(c.index), c.title[:60], f"{c.word_count:,}")
+    console.print(table)
+    console.print(f"[green]Read {pages} pages into[/] {proj.dir}  (slug: [bold]{proj.slug}[/])")
+    console.print(f"Check the text: {proj.dir / 'source.txt'}")
+
+
+@app.command()
 def direct(
     slug: str,
     chapter: list[int] = typer.Option(..., "--chapter", "-c", help="Chapter number(s) to process"),

@@ -96,10 +96,21 @@ def library(request: Request):
 
 
 @app.post("/upload")
-async def upload(file: UploadFile):
+async def upload(files: list[UploadFile], title: str = Form("")):
+    from ..ocr import IMAGE_SUFFIXES
+
+    suffixes = {Path(f.filename or "").suffix.lower() for f in files}
+    if suffixes and suffixes <= IMAGE_SUFFIXES:
+        proj = pipeline.create_photo_book(title.strip() or "Photographed book")
+        _save_photos(proj, files)
+        jobs.submit(proj.slug, "ocr", [])
+        return RedirectResponse(f"/book/{proj.slug}", status_code=303)
+    if len(files) != 1:
+        raise HTTPException(400, "Upload one EPUB/PDF/TXT file, or any number of page photos.")
+    file = files[0]
     suffix = Path(file.filename or "book.epub").suffix.lower()
     if suffix not in (".epub", ".pdf", ".txt"):
-        raise HTTPException(400, "Please upload an EPUB, PDF or TXT file.")
+        raise HTTPException(400, "Please upload an EPUB, PDF or TXT file, or photos of the pages.")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / Path(file.filename).name
         with path.open("wb") as f:
@@ -111,14 +122,37 @@ async def upload(file: UploadFile):
     return RedirectResponse(f"/book/{proj.slug}", status_code=303)
 
 
+def _save_photos(proj: BookProject, files: list[UploadFile]) -> None:
+    """Keep the phone's names (IMG_1234…) so pages sort in shooting order; prefix with the
+    upload position so identically named files (some phones send 'image.jpg') still keep order."""
+    folder = proj.dir / "photos"
+    start = len([p for p in folder.iterdir() if p.is_file()])
+    for i, f in enumerate(files):
+        name = Path(f.filename or f"page{i}.jpg").name
+        with (folder / f"{start + i:05d}-{name}").open("wb") as out:
+            shutil.copyfileobj(f.file, out)
+
+
+@app.post("/book/{slug}/photos")
+async def add_photos(slug: str, files: list[UploadFile]):
+    proj = BookProject(slug)
+    if not (proj.dir / "photos").is_dir():
+        raise HTTPException(404)
+    _save_photos(proj, files)
+    jobs.submit(slug, "ocr", [])
+    return RedirectResponse(f"/book/{slug}", status_code=303)
+
+
 # --- book ----------------------------------------------------------------------
 
 @app.get("/book/{slug}", response_class=HTMLResponse)
 def book(request: Request, slug: str):
     proj = project(slug)
+    photos = proj.dir / "photos"
     return templates.TemplateResponse(request, "book.html", {
         "slug": slug, "title": book_title(proj), "rows": chapter_rows(proj),
         "jobs": jobs.recent(slug), "cast": proj.load_cast(),
+        "photo_count": len([p for p in photos.iterdir() if p.is_file()]) if photos.is_dir() else None,
     })
 
 

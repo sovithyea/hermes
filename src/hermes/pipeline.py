@@ -55,6 +55,50 @@ def ingest(path: Path, root: Path | None = None) -> BookProject:
     return proj
 
 
+def create_photo_book(title: str) -> BookProject:
+    """An empty book that photos get added to; its text comes from OCR (see ocr_photos)."""
+    from .store import LIBRARY, slugify
+
+    slug = base = slugify(title)
+    n = 2
+    while (LIBRARY / slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    proj = BookProject(slug)
+    (proj.dir / "photos").mkdir(parents=True)
+    proj.save_chapters([])
+    (proj.dir / "meta.json").write_text(json.dumps({"title": title, "source": "photos"}))
+    return proj
+
+
+def ocr_photos(proj: BookProject, progress: Progress | None = None) -> int:
+    """(Re)build a photo book's chapters from its photos. Each page's OCR is cached,
+    so adding more photos later only reads the new ones. Returns the page count."""
+    from .ingest import _load_txt, MIN_CHAPTER_WORDS
+    from .ocr import ocr_page, assemble, sort_photos
+
+    photos = sort_photos(list((proj.dir / "photos").iterdir()))
+    cache_dir = proj.dir / "photos" / ".ocr"
+    cache_dir.mkdir(exist_ok=True)
+    pages = []
+    for n, photo in enumerate(photos, start=1):
+        cached = cache_dir / f"{photo.name}.json"
+        if cached.exists():
+            pages.append(json.loads(cached.read_text()))
+        else:
+            page = ocr_page(photo)
+            cached.write_text(json.dumps(page, ensure_ascii=False))
+            pages.append(page)
+        if progress:
+            progress(n, len(photos), f"Reading page photos ({n}/{len(photos)})")
+    text = assemble(pages)
+    (proj.dir / "source.txt").write_text(text, encoding="utf-8")
+    chapters = [c for c in _load_txt(text) if c.word_count >= MIN_CHAPTER_WORDS] or _load_txt(text)
+    for i, c in enumerate(chapters, start=1):
+        c.index = i
+    proj.save_chapters(chapters)
+    return len(photos)
+
+
 def _epub_title(path: Path) -> str | None:
     if path.suffix.lower() != ".epub":
         return None

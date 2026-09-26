@@ -10,6 +10,18 @@
   </p>
 </section>
 
+{% if photo_count is not none %}
+<form class="card photo-strip" action="/book/{{ slug }}/photos" method="post" enctype="multipart/form-data">
+  <div>
+    <strong>{{ photo_count }} page photo{{ "s" if photo_count != 1 }}</strong>
+    <p class="muted">Photos are read in the order the phone named them (IMG_0001, IMG_0002…). Add more whenever you like; only new pages are read.</p>
+  </div>
+  <label class="btn" for="more-photos">Add more pages</label>
+  <input id="more-photos" name="files" type="file" accept="image/*,.heic,.heif" multiple hidden
+         onchange="this.form.submit()">
+</form>
+{% endif %}
+
 <div class="steps">
   <div class="step">
     <span class="step-n">1</span>
