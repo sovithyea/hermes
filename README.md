@@ -53,6 +53,10 @@ sign in to the same account, then run `uv run hermes serve --tailscale`. The app
 https link (only your tailnet can open it) and the scanner gets a one-tap live viewfinder.
 Share the Mac from the Tailscale admin console to give a friend access.
 
+**Each person gets their own library.** Tailscale tells the app who is signed in, so books
+someone adds are visible only to them; books added on this Mac (or from the CLI) belong to the
+Mac's owner. Delete a book from the bottom of its page.
+
 Alternatively, to upload straight from a phone on the same Wi-Fi, run `uv run hermes serve --phone`
 and open `http://<this-mac>.local:8000` on the phone (anyone on that network can reach it while
 it runs), or AirDrop the photos to the Mac.

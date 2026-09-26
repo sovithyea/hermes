@@ -41,6 +41,11 @@
 
 {% include "_progress.html" %}
 
+<form class="danger-zone" method="post" action="/book/{{ slug }}/delete"
+      onsubmit="return confirm('Delete “{{ title }}” and all its audio? This can’t be undone.')">
+  <button class="btn small" type="submit">Delete this book</button>
+</form>
+
 <div class="player" id="player" data-slug="{{ slug }}" hidden>
   <div class="player-info"><span class="muted">Now playing</span> <strong id="player-title"></strong></div>
   <audio id="audio" controls preload="metadata"></audio>

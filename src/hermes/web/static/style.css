@@ -55,6 +55,10 @@ code { background: var(--soft); padding: 1px 5px; border-radius: 4px; font-size:
 .topbar nav { display: flex; gap: 18px; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); text-decoration: none; }
 .topbar nav a:hover { color: var(--ink); }
+.danger-zone { margin-top: 28px; display: flex; justify-content: flex-end; }
+.danger-zone .btn { color: var(--muted); }
+.danger-zone .btn:hover { color: var(--accent); border-color: var(--accent); }
+.whoami { margin-left: auto; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .page { max-width: 920px; margin: 0 auto; padding: 32px 24px 160px; }
 .hero { margin-bottom: 28px; }
 .hero p { margin: 0; max-width: 60ch; }

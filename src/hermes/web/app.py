@@ -25,8 +25,10 @@ from ..director import EMOTIONS
 from ..lexicon import Lexicon
 from ..models import NARRATOR
 from ..render import Renderer, export_mp3
-from ..store import LIBRARY, BookProject
+from .. import store
+from ..store import BookProject
 from ..tts.kokoro_engine import FEMALE_VOICES, MALE_VOICES
+from .identity import current_user, owner as mac_owner
 from .jobs import JobQueue
 
 HERE = Path(__file__).parent
@@ -45,6 +47,22 @@ def voice_label(v: str) -> str:
 
 
 templates.env.globals.update(voice_label=voice_label, VOICES=FEMALE_VOICES + MALE_VOICES)
+
+
+def owns(user, proj: BookProject) -> bool:
+    return (proj.owner() or mac_owner().login) == user.login
+
+
+@app.middleware("http")
+async def per_person_libraries(request: Request, call_next):
+    """Work out who is asking, and hide every book that isn't theirs (as if it didn't exist)."""
+    request.state.user = current_user(request.client.host if request.client else None, request.headers)
+    parts = request.url.path.split("/")
+    if len(parts) > 2 and parts[1] == "book":
+        proj = BookProject(parts[2])
+        if proj.dir.exists() and not owns(request.state.user, proj):
+            return HTMLResponse("No such book", status_code=404)
+    return await call_next(request)
 
 
 # --- helpers -------------------------------------------------------------------
@@ -86,9 +104,9 @@ def parse_chapters(spec: str, rows: list[dict], kind: str) -> list[int]:
 @app.get("/", response_class=HTMLResponse)
 def library(request: Request):
     books = []
-    if LIBRARY.exists():
-        for d in sorted(LIBRARY.iterdir()):
-            if (d / "chapters.json").exists():
+    if store.LIBRARY.exists():
+        for d in sorted(store.LIBRARY.iterdir()):
+            if (d / "chapters.json").exists() and owns(request.state.user, BookProject(d.name)):
                 proj = BookProject(d.name)
                 rows = chapter_rows(proj)
                 books.append({"slug": d.name, "title": book_title(proj), "chapters": len(rows),
@@ -97,12 +115,13 @@ def library(request: Request):
 
 
 @app.post("/upload")
-async def upload(files: list[UploadFile], title: str = Form("")):
+async def upload(request: Request, files: list[UploadFile], title: str = Form("")):
+    who = request.state.user.login
     from ..ocr import IMAGE_SUFFIXES
 
     suffixes = {Path(f.filename or "").suffix.lower() for f in files}
     if suffixes and suffixes <= IMAGE_SUFFIXES:
-        proj = pipeline.create_photo_book(title.strip() or "Photographed book")
+        proj = pipeline.create_photo_book(title.strip() or "Photographed book", owner=who)
         _save_photos(proj, files)
         jobs.submit(proj.slug, "ocr", [])
         return RedirectResponse(f"/book/{proj.slug}", status_code=303)
@@ -117,7 +136,7 @@ async def upload(files: list[UploadFile], title: str = Form("")):
         with path.open("wb") as f:
             shutil.copyfileobj(file.file, f)
         try:
-            proj = pipeline.ingest(path)
+            proj = pipeline.ingest(path, owner=who, unique=True)
         except ValueError as e:
             raise HTTPException(400, str(e))
     return RedirectResponse(f"/book/{proj.slug}", status_code=303)
@@ -137,8 +156,8 @@ def _save_photos(proj: BookProject, files: list[UploadFile]) -> None:
 # --- scanning pages in the app ---------------------------------------------------
 
 @app.post("/scan/new")
-def scan_new(title: str = Form(...)):
-    proj = pipeline.create_photo_book(title.strip() or "Scanned book")
+def scan_new(request: Request, title: str = Form(...)):
+    proj = pipeline.create_photo_book(title.strip() or "Scanned book", owner=request.state.user.login)
     return RedirectResponse(f"/book/{proj.slug}/scan", status_code=303)
 
 
@@ -181,6 +200,12 @@ async def add_photos(slug: str, files: list[UploadFile]):
     return RedirectResponse(f"/book/{slug}", status_code=303)
 
 
+@app.get("/whoami")
+def whoami(request: Request):
+    u = request.state.user
+    return {"login": u.login, "name": u.name, "is_owner": u.is_owner}
+
+
 # --- book ----------------------------------------------------------------------
 
 @app.get("/book/{slug}", response_class=HTMLResponse)
@@ -192,6 +217,16 @@ def book(request: Request, slug: str):
         "jobs": jobs.recent(slug), "cast": proj.load_cast(),
         "page_count": len(pipeline.scanned_pages(proj)) if is_photo_book else None,
     })
+
+
+@app.post("/book/{slug}/delete")
+def delete_book(slug: str):
+    """Remove a book and everything made from it (text, scripts, audio). Owner-only via the middleware."""
+    proj = project(slug)
+    if jobs.active(slug):
+        raise HTTPException(409, "Wait for this book's reading/voicing to finish before deleting it.")
+    shutil.rmtree(proj.dir)
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/book/{slug}/progress", response_class=HTMLResponse)
@@ -295,7 +330,7 @@ def _parse_lexicon(text: str) -> dict[str, str]:
     return out
 
 
-PREVIEWS = LIBRARY / "_previews"
+PREVIEWS = store.LIBRARY / "_previews"
 
 
 @app.get("/voice-preview")

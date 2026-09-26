@@ -25,13 +25,13 @@ def slugify(name: str) -> str:
 
 
 class BookProject:
-    def __init__(self, slug: str, root: Path = LIBRARY):
+    def __init__(self, slug: str, root: Path | None = None):
         self.slug = slug
-        self.dir = root / slug
+        self.dir = (root or LIBRARY) / slug
 
     @classmethod
-    def create(cls, source: Path, root: Path = LIBRARY) -> "BookProject":
-        proj = cls(slugify(source.stem), root)
+    def create(cls, source: Path, root: Path | None = None, slug: str | None = None) -> "BookProject":
+        proj = cls(slug or slugify(source.stem), root)
         proj.dir.mkdir(parents=True, exist_ok=True)
         dest = proj.dir / f"source{source.suffix.lower()}"
         if source.resolve() != dest.resolve():
@@ -88,6 +88,12 @@ class BookProject:
     def load_render_info(self, chapter: int) -> dict | None:
         path = self.audio_path(chapter).with_suffix(".json")
         return _read_json(path) if path.exists() else None
+
+
+    def owner(self) -> str | None:
+        """Login of the person whose library this book is in (None = the Mac's owner)."""
+        meta = self.dir / "meta.json"
+        return json.loads(meta.read_text()).get("owner") if meta.exists() else None
 
 
 def _write_json(path: Path, data) -> None:

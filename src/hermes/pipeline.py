@@ -98,28 +98,43 @@ def elevenlabs_estimate(proj: BookProject) -> dict:
     return {"total": total, "pending": pending}
 
 
-def ingest(path: Path, root: Path | None = None) -> BookProject:
+def ingest(path: Path, root: Path | None = None, owner: str | None = None, unique: bool = False) -> BookProject:
+    """Import a book file. `unique` gives it a fresh folder rather than replacing a same-named book
+    (web uploads, where two people may add the same title)."""
+    from .store import LIBRARY, slugify
+
     chapters = load_book(path)
     if not chapters:
         raise ValueError("No chapters found in that file.")
-    proj = BookProject.create(path, root) if root else BookProject.create(path)
+    root = root or LIBRARY
+    slug = _free_slug(slugify(path.stem), root) if unique else slugify(path.stem)
+    proj = BookProject.create(path, root, slug=slug)
     proj.save_chapters(chapters)
-    (proj.dir / "meta.json").write_text(json.dumps({"title": _epub_title(path) or path.stem}))
+    meta = {"title": _epub_title(path) or path.stem}
+    if owner:
+        meta["owner"] = owner
+    (proj.dir / "meta.json").write_text(json.dumps(meta))
     return proj
 
 
-def create_photo_book(title: str) -> BookProject:
+def _free_slug(base: str, root: Path) -> str:
+    slug, n = base, 2
+    while (root / slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def create_photo_book(title: str, owner: str | None = None) -> BookProject:
     """An empty book that photos get added to; its text comes from OCR (see ocr_photos)."""
     from .store import LIBRARY, slugify
 
-    slug = base = slugify(title)
-    n = 2
-    while (LIBRARY / slug).exists():
-        slug, n = f"{base}-{n}", n + 1
-    proj = BookProject(slug)
+    proj = BookProject(_free_slug(slugify(title), LIBRARY))
     (proj.dir / "photos").mkdir(parents=True)
     proj.save_chapters([])
-    (proj.dir / "meta.json").write_text(json.dumps({"title": title, "source": "photos"}))
+    meta = {"title": title, "source": "photos"}
+    if owner:
+        meta["owner"] = owner
+    (proj.dir / "meta.json").write_text(json.dumps(meta))
     return proj
 
 

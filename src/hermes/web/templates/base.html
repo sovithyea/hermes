@@ -14,6 +14,7 @@
   <header class="topbar">
     <a class="brand" href="/">Hermes</a>
     <nav>{% block nav %}{% endblock %}</nav>
+    <span class="whoami" title="{{ request.state.user.login }}">{{ request.state.user.first_name }}'s library</span>
   </header>
   <main class="page">{% block body %}{% endblock %}</main>
   <script src="/static/app.js"></script>
