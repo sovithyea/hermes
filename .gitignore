@@ -1,0 +1,6 @@
+library/
+samples/*.epub
+*.tmp
+__pycache__/
+.venv/
+.pytest_cache/
