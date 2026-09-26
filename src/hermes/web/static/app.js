@@ -89,10 +89,21 @@ if (player) {
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("button.preview");
   if (!btn) return;
-  const select = btn.parentElement.querySelector("select");
-  if (!select.value) return;
+  const pick = btn.parentElement;
+  const engine = pick.querySelector(".engine-select")?.value || "kokoro";
+  const select = engine === "elevenlabs" ? pick.querySelector(".eleven-voice") : pick.querySelector(".kokoro-voice select, select.voice-select");
+  if (!select || !select.value) return;
   const name = encodeURIComponent(btn.dataset.name || "");
-  playClip(`/voice-preview?voice=${select.value}&name=${name}`, btn);
+  playClip(`/voice-preview?engine=${engine}&voice=${select.value}&name=${name}`, btn);
+});
+
+// Switching a character between Kokoro and ElevenLabs swaps which voice list is shown.
+document.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("engine-select")) return;
+  const pick = e.target.parentElement;
+  const eleven = e.target.value === "elevenlabs";
+  pick.querySelector(".eleven-voice").hidden = !eleven;
+  pick.querySelector(".kokoro-voice").hidden = eleven;
 });
 
 // ---------------------------------------------------------------------------

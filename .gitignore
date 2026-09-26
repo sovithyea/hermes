@@ -4,3 +4,4 @@ samples/*.epub
 __pycache__/
 .venv/
 .pytest_cache/
+.env

@@ -36,7 +36,9 @@ class Character(BaseModel):
     age: Literal["child", "young", "adult", "old", "unknown"] = "unknown"
     kind: Literal["human", "dragon", "other"] = "human"
     description: str = ""
-    voice: str | None = None  # assigned during casting
+    voice: str | None = None  # Kokoro voice, assigned during casting (always kept as the free fallback)
+    engine: Literal["kokoro", "elevenlabs"] = "kokoro"
+    engine_voice: str | None = None  # voice id on `engine` when it isn't Kokoro
     line_count: int = 0
 
 

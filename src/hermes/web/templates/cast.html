@@ -15,6 +15,25 @@
 </section>
 {% if saved %}<p class="notice">Saved. Chapters that sound different now are marked “Changed · re-voice”.</p>{% endif %}
 
+<div class="card eleven-card">
+  <h2>ElevenLabs</h2>
+  {% if not eleven %}
+    <p class="muted">Not connected. The narrator and everyone else use free Kokoro voices.
+      To give chosen characters ElevenLabs voices, add <code>ELEVENLABS_API_KEY=…</code> to the <code>.env</code> file in the Hermes folder and restart.</p>
+  {% elif eleven_error %}
+    <p class="error">{{ eleven_error }}</p>
+  {% else %}
+    <p class="muted">Pick <strong>ElevenLabs</strong> next to any character below. The narrator stays on free Kokoro.
+      ElevenLabs lines are performed with real emotion (whispering, anger…) and charged per character of text.</p>
+    <div class="meters">
+      <div><span class="muted">This month</span><strong>{{ "{:,}".format(usage.used) }} / {{ "{:,}".format(usage.limit) }}</strong><span class="muted">characters used</span></div>
+      <div><span class="muted">This book's ElevenLabs lines</span><strong>{{ "{:,}".format(estimate.total) }}</strong><span class="muted">characters in total</span></div>
+      <div><span class="muted">Still to generate</span><strong {% if estimate.pending > usage.limit - usage.used %}class="over"{% endif %}>{{ "{:,}".format(estimate.pending) }}</strong>
+        <span class="muted">{% if estimate.pending > usage.limit - usage.used %}more than you have left{% else %}fits in what's left{% endif %}</span></div>
+    </div>
+  {% endif %}
+</div>
+
 <form method="post" class="cast-form">
   <div class="card">
     <h2>Narrator</h2>
@@ -49,7 +68,17 @@
           <input type="hidden" name="voice::{{ c.name }}" value="{{ c.voice or '' }}">
           <span class="muted">Uses the narrator voice</span>
         {% else %}
-          {{ voice_select("voice::" ~ c.name, c.voice, allow_auto=True) }}
+          {% if eleven and eleven_voices %}
+          <select name="engine::{{ c.name }}" class="engine-select" aria-label="Voice engine">
+            <option value="kokoro" {% if c.engine != "elevenlabs" %}selected{% endif %}>Kokoro</option>
+            <option value="elevenlabs" {% if c.engine == "elevenlabs" %}selected{% endif %}>ElevenLabs</option>
+          </select>
+          <select name="evoice::{{ c.name }}" class="voice-select eleven-voice" {% if c.engine != "elevenlabs" %}hidden{% endif %}>
+            <option value="">Automatic</option>
+            {% for v in eleven_voices %}<option value="{{ v.id }}" {% if v.id == c.engine_voice %}selected{% endif %}>{{ v.name }}{% if v.gender %} — {{ v.gender }}{% endif %}{% if v.description %}, {{ v.description }}{% endif %}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <span class="kokoro-voice" {% if eleven and eleven_voices and c.engine == "elevenlabs" %}hidden{% endif %}>{{ voice_select("voice::" ~ c.name, c.voice, allow_auto=True) }}</span>
           <button type="button" class="btn small preview" data-name="{{ c.name.split()[0] }}">▶</button>
         {% endif %}
       </div>

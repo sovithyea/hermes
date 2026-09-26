@@ -36,5 +36,34 @@ Everything the tool decides is plain JSON in `library/<slug>/` and can be edited
 
 Voices: `af_*`/`bf_*` are American/British female, `am_*`/`bm_*` male.
 
+## Web app
+
+```sh
+uv run hermes serve        # http://localhost:8000
+```
+
+Upload an EPUB/PDF/TXT, or **photos of a printed book's pages** (phone photos, any order of
+upload: pages are sorted by the phone's file names, IMG_0001, IMG_0002…). Photos are read with
+Apple's on-device OCR; italics (often the only marker of telepathic speech) are recovered by
+measuring letter slant. Check the result in `library/<slug>/source.txt`. CLI equivalent:
+`uv run hermes photos <folder> --title "Book title"`.
+
+To upload straight from a phone on the same Wi-Fi, run `uv run hermes serve --host 0.0.0.0`
+and open `http://<this-mac>.local:8000` on the phone (anyone on that network can reach it while
+it runs), or AirDrop the photos to the Mac.
+
+## ElevenLabs (optional, paid per character)
+
+Put your key in a `.env` file in this folder (it's git-ignored):
+
+```
+ELEVENLABS_API_KEY=...
+```
+
+Then on the Cast page switch individual characters to ElevenLabs. The narrator stays on free
+Kokoro. ElevenLabs lines are performed from the script's emotions with v3 tags like
+`[whispers]`, and the page shows how many characters the book's ElevenLabs lines will use
+against your monthly allowance before you generate anything.
+
 Books and generated audio live in `library/`, which is git-ignored. Only use books you own,
 and don't distribute the audio.

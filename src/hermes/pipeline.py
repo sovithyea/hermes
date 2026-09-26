@@ -45,6 +45,59 @@ def engine():
     return _engine
 
 
+_eleven = None
+
+
+def elevenlabs():
+    """The ElevenLabs engine, or None when no API key is configured."""
+    global _eleven
+    from . import config
+
+    if _eleven is None and config.elevenlabs_key():
+        from .tts.elevenlabs_engine import ElevenLabsEngine
+
+        _eleven = ElevenLabsEngine(config.elevenlabs_key(), config.elevenlabs_model())
+    return _eleven
+
+
+def engines() -> dict:
+    out = {"kokoro": engine()}
+    if elevenlabs():
+        out["elevenlabs"] = elevenlabs()
+    return out
+
+
+class _StandIn:
+    """Same name/abilities as a real engine, without loading it — for fingerprints and estimates."""
+
+    def __init__(self, name: str, native_emotion: bool = False):
+        self.name, self.native_emotion = name, native_emotion
+
+
+def stand_in_engines() -> dict:
+    from . import config
+
+    out = {"kokoro": _StandIn("kokoro")}
+    if config.elevenlabs_key():
+        out["elevenlabs"] = _StandIn("elevenlabs", native_emotion=True)
+    return out
+
+
+def elevenlabs_estimate(proj: BookProject) -> dict:
+    """Characters of text the ElevenLabs-voiced lines would bill, total and not yet rendered."""
+    renderer = Renderer(stand_in_engines(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
+    total = pending = 0
+    for lines in proj.all_scripts():
+        for line in lines:
+            plan = renderer._plan(line)
+            if plan[0].name == "elevenlabs":
+                chars = len(plan[2])
+                total += chars
+                if not (proj.cache_dir / f"{plan[-1]}.wav").exists():
+                    pending += chars
+    return {"total": total, "pending": pending}
+
+
 def ingest(path: Path, root: Path | None = None) -> BookProject:
     chapters = load_book(path)
     if not chapters:
@@ -130,7 +183,7 @@ def render(proj: BookProject, chapters: list[int], progress: Progress | None = N
     titles = {c.index: c.title for c in proj.load_chapters()}
     cast = auto_cast(proj.load_cast(), proj.all_scripts())  # fills in voices for any new speakers
     proj.save_cast(cast)
-    renderer = Renderer(engine(), cast, Lexicon.load(proj.lexicon_path), proj.cache_dir)
+    renderer = Renderer(engines(), cast, Lexicon.load(proj.lexicon_path), proj.cache_dir)
     for i, n in enumerate(chapters):
         def step(done: int, total: int, n=n, i=i) -> None:
             if progress:
@@ -143,13 +196,9 @@ def render(proj: BookProject, chapters: list[int], progress: Progress | None = N
     return renderer.stats
 
 
-class _NoEngine:
-    name = "kokoro"  # must match the real engine's name so fingerprints agree
-
-
 def chapter_status(proj: BookProject) -> dict[int, str]:
     """new → read (script exists) → done, or stale when the script/cast/lexicon changed since rendering."""
-    renderer = Renderer(_NoEngine(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
+    renderer = Renderer(stand_in_engines(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
     out = {}
     for c in proj.load_chapters():
         if not proj.script_path(c.index).exists():

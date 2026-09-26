@@ -149,6 +149,13 @@ select, input, textarea { font: 14px var(--sans); color: var(--ink); background:
 textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; }
 .check { display: block; margin-top: 12px; }
 .check .muted { display: block; margin-left: 24px; font-size: 13px; }
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }
+.meters > div { display: flex; flex-direction: column; background: var(--soft); border-radius: 8px; padding: 10px 12px; }
+.meters strong { font: 700 20px var(--serif); }
+.meters strong.over { color: var(--accent); }
+.meters .muted { font-size: 12.5px; }
+.engine-select { flex: none; }
+.kokoro-voice { display: contents; }
 .notice { background: var(--ok-bg); color: var(--ok); padding: 10px 14px; border-radius: var(--radius); }
 .save-bar { position: sticky; bottom: 0; display: flex; justify-content: flex-end; padding: 12px 0;
             background: var(--paper); border-top: 1px solid var(--line); }

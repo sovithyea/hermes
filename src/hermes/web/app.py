@@ -194,9 +194,18 @@ def cast_page(request: Request, slug: str, saved: bool = False):
     cast = proj.load_cast()
     speaking = sorted([c for c in cast.characters if c.line_count], key=lambda c: -c.line_count)
     lexicon = Lexicon.load(proj.lexicon_path).entries
+    eleven, eleven_error = pipeline.elevenlabs(), None
+    eleven_voices, usage = [], None
+    if eleven:
+        try:
+            eleven_voices, usage = eleven.voice_list(), eleven.usage()
+        except Exception as e:
+            eleven_error = str(e)
     return templates.TemplateResponse(request, "cast.html", {
         "slug": slug, "title": book_title(proj), "cast": cast, "speaking": speaking, "saved": saved,
         "lexicon_text": "\n".join(f"{k} = {v}" for k, v in lexicon.items()),
+        "eleven": bool(eleven), "eleven_error": eleven_error, "eleven_voices": eleven_voices,
+        "usage": usage, "estimate": pipeline.elevenlabs_estimate(proj) if eleven else None,
     })
 
 
@@ -215,6 +224,16 @@ async def save_cast(request: Request, slug: str):
             c.voice = form[f"voice::{key}"] or None
             c.gender = form.get(f"gender::{key}", c.gender)
             c.kind = form.get(f"kind::{key}", c.kind)
+        if f"engine::{key}" in form:
+            c.engine = "elevenlabs" if form[f"engine::{key}"] == "elevenlabs" else "kokoro"
+            c.engine_voice = form.get(f"evoice::{key}") or c.engine_voice
+    eleven = pipeline.elevenlabs()
+    if eleven:
+        taken = {c.engine_voice for c in cast.characters if c.engine == "elevenlabs" and c.engine_voice}
+        for c in cast.characters:
+            if c.engine == "elevenlabs" and not c.engine_voice:
+                c.engine_voice = eleven.pick_voice("male" if c.kind == "dragon" else c.gender, taken)
+                taken.add(c.engine_voice)
     pov = cast.find(cast.pov_character) if cast.pov_character else None
     if pov and cast.split_pov_voice and not was_split and pov.voice == cast.narrator_voice:
         pov.voice = None  # give the POV character their own voice
@@ -237,14 +256,21 @@ PREVIEWS = LIBRARY / "_previews"
 
 
 @app.get("/voice-preview")
-def voice_preview(voice: str, name: str = ""):
-    if voice not in FEMALE_VOICES + MALE_VOICES:
-        raise HTTPException(400)
+def voice_preview(voice: str, name: str = "", engine: str = "kokoro"):
     text = (f"Hi, I'm {name}. " if name else "") + \
         "This is how I sound. I've waited a long time to tell you this story, so listen closely."
-    out = PREVIEWS / f"{voice}-{hashlib.sha1(text.encode()).hexdigest()[:10]}.mp3"
+    if engine == "elevenlabs":
+        tts = pipeline.elevenlabs()
+        if not tts or voice not in tts.voices():
+            raise HTTPException(400)
+    elif voice in FEMALE_VOICES + MALE_VOICES:
+        tts = pipeline.engine()
+    else:
+        raise HTTPException(400)
+    # Previews are cached on disk, so an ElevenLabs sample is only paid for once.
+    out = PREVIEWS / f"{engine}-{voice}-{hashlib.sha1(text.encode()).hexdigest()[:10]}.mp3"
     if not out.exists():
-        export_mp3(pipeline.engine().synth(text, voice), out)
+        export_mp3(tts.synth(text, voice), out)
     return FileResponse(out, media_type="audio/mpeg")
 
 
@@ -294,7 +320,7 @@ def line_audio(slug: str, n: int, line_id: str):
     line = next((l for l in proj.load_script(n) if l.id == line_id), None)
     if not line:
         raise HTTPException(404)
-    renderer = Renderer(pipeline.engine(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
+    renderer = Renderer(pipeline.engines(), proj.load_cast(), Lexicon.load(proj.lexicon_path), proj.cache_dir)
     buf = io.BytesIO()
     sf.write(buf, renderer.line_audio(line), 24_000, format="WAV")
     return Response(buf.getvalue(), media_type="audio/wav", headers={"Cache-Control": "no-store"})

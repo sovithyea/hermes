@@ -40,19 +40,29 @@ class RenderStats:
 
 
 class Renderer:
-    def __init__(self, engine: TTSEngine, cast: Cast, lexicon: Lexicon, cache_dir: Path):
-        self.engine, self.cast, self.lexicon = engine, cast, lexicon
+    def __init__(self, engines: TTSEngine | dict[str, TTSEngine], cast: Cast, lexicon: Lexicon, cache_dir: Path):
+        # Kokoro is the default engine; others (ElevenLabs) are used for characters switched to them.
+        self.engines = engines if isinstance(engines, dict) else {engines.name: engines}
+        self.default = self.engines.get("kokoro") or next(iter(self.engines.values()))
+        self.cast, self.lexicon = cast, lexicon
         self.cache_dir = cache_dir
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.stats = RenderStats()
 
     # --- per line -----------------------------------------------------------
 
-    def voice_for(self, line: ScriptLine) -> str:
+    def engine_and_voice(self, line: ScriptLine) -> tuple[TTSEngine, str]:
         if line.type == "narration" or line.speaker == NARRATOR:
-            return self.cast.narrator_voice
+            return self.default, self.cast.narrator_voice
         c = self.cast.find(line.speaker)
-        return (c.voice if c and c.voice else None) or self.cast.unknown_voice
+        if c and c.name == self.cast.pov_character and not self.cast.split_pov_voice:
+            return self.default, self.cast.narrator_voice  # first-person narrator speaks in the narrator voice
+        if c and c.engine != self.default.name and c.engine in self.engines and c.engine_voice:
+            return self.engines[c.engine], c.engine_voice
+        return self.default, (c.voice if c and c.voice else None) or self.cast.unknown_voice
+
+    def voice_for(self, line: ScriptLine) -> str:
+        return self.engine_and_voice(line)[1]
 
     def effect_for(self, line: ScriptLine) -> str | None:
         if line.type == "narration":
@@ -66,12 +76,15 @@ class Renderer:
             return "thought"
         return None
 
-    def _plan(self, line: ScriptLine) -> tuple[str, str, Prosody, str | None, str]:
-        voice = self.voice_for(line)
-        prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" else Prosody()
+    def _plan(self, line: ScriptLine):
+        engine, voice = self.engine_and_voice(line)
+        native = getattr(engine, "native_emotion", False)
+        # Engines that can act get the emotion itself; others approximate it with pace and volume.
+        emotion = line.emotion if native and line.type != "narration" else None
+        prosody = EMOTION_PROSODY.get(line.emotion, Prosody()) if line.type != "narration" and not native else Prosody()
         effect = self.effect_for(line)
         text = self.lexicon.apply(line.text)
-        return voice, text, prosody, effect, cache_key(self.engine.name, voice, text, prosody, effect)
+        return engine, voice, text, prosody, emotion, effect, cache_key(engine.name, voice, text, prosody, effect, emotion)
 
     def fingerprint(self, title: str, lines: list[ScriptLine]) -> str:
         """Identifies exactly what a chapter would sound like; changes iff its audio would change."""
@@ -80,14 +93,17 @@ class Renderer:
         return hashlib.sha256("|".join(keys).encode()).hexdigest()[:24]
 
     def line_audio(self, line: ScriptLine) -> np.ndarray:
-        voice, text, prosody, effect, key = self._plan(line)
+        engine, voice, text, prosody, emotion, effect, key = self._plan(line)
         path = self.cache_dir / f"{key}.wav"
         self.stats.lines += 1
         if path.exists():
             self.stats.cache_hits += 1
             audio, _ = sf.read(path, dtype="float32")
             return audio
-        audio = self.engine.synth(text, voice, prosody.speed)
+        if emotion is not None:
+            audio = engine.synth(text, voice, 1.0, emotion=emotion)
+        else:
+            audio = engine.synth(text, voice, prosody.speed)
         if prosody.gain_db:
             audio = audio * (10 ** (prosody.gain_db / 20))
         if effect:
@@ -115,8 +131,12 @@ class Renderer:
         return audio
 
 
-def cache_key(engine: str, voice: str, text: str, prosody: Prosody, effect: str | None) -> str:
-    raw = "\x1f".join([engine, voice, text, f"{prosody.speed:.3f}", f"{prosody.gain_db:.2f}", effect or ""])
+def cache_key(engine: str, voice: str, text: str, prosody: Prosody, effect: str | None,
+              emotion: str | None = None) -> str:
+    parts = [engine, voice, text, f"{prosody.speed:.3f}", f"{prosody.gain_db:.2f}", effect or ""]
+    if emotion is not None:  # only engines that act on emotion include it (keeps older cache keys valid)
+        parts.append(emotion)
+    raw = "\x1f".join(parts)
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 
